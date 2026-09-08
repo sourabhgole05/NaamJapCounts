@@ -4,7 +4,7 @@
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
 <meta name="theme-color" content="#0f172a">
-<title>SpeakCount — Phrase Counter</title>
+<title>SpeakCount — Chant Counter</title>
 <style>
   * { margin: 0; padding: 0; box-sizing: border-box; font-family: 'Segoe UI', sans-serif; }
   body { background: #0f172a; color: #e2e8f0; min-height: 100vh; display: flex; justify-content: center; padding: 20px; }
@@ -25,9 +25,13 @@
   #status { margin-top: 10px; color: #94a3b8; font-size: 0.9rem; min-height: 1.2em; }
 
   .lbl { font-size: 0.8rem; color: #94a3b8; display: block; margin: 14px 0 6px; }
-  .app input, .app select { width: 100%; padding: 12px 16px; border-radius: 8px; border: 1px solid #334155;
+  .app input:not([type=checkbox]), .app select { width: 100%; padding: 12px 16px; border-radius: 8px; border: 1px solid #334155;
     background: #1e293b; color: #fff; font-size: 1rem; outline: none; }
   .app input:focus, .app select:focus { border-color: #38bdf8; }
+
+  .chk { display: flex; align-items: flex-start; gap: 8px; margin-top: 10px;
+    font-size: 0.82rem; color: #94a3b8; cursor: pointer; }
+  .chk input { margin-top: 2px; }
 
   .big-count { background: linear-gradient(135deg, #0ea5e9, #6366f1); border-radius: 16px;
     padding: 22px; text-align: center; margin: 20px 0; }
@@ -35,7 +39,8 @@
   .big-count .num { font-size: 4rem; font-weight: 800; }
   .big-count .num.pop { animation: pop 0.35s; }
   @keyframes pop { 50% { transform: scale(1.25); color: #fde68a; } }
-  .big-count .live { min-height: 20px; font-size: 0.85rem; color: #fef9c3; }
+  .big-count .live { min-height: 20px; font-size: 0.9rem; color: #fef9c3; }
+  .big-count .live b { color: #fde68a; }
 
   .stats { display: flex; gap: 12px; margin-bottom: 16px; }
   .stat { flex: 1; background: #1e293b; border-radius: 12px; padding: 14px; text-align: center; }
@@ -43,8 +48,12 @@
   .stat .lb { font-size: 0.75rem; color: #94a3b8; }
 
   .transcript { background: #1e293b; border-radius: 12px; padding: 14px; min-height: 56px;
-    font-size: 0.95rem; color: #cbd5e1; margin-bottom: 14px; }
+    font-size: 0.95rem; color: #cbd5e1; margin-bottom: 8px; }
   .transcript .interim { color: #64748b; font-style: italic; }
+
+  #aliasLastBtn { width: 100%; margin: 0 0 14px; padding: 10px; border: 1px dashed #38bdf8;
+    border-radius: 8px; background: transparent; color: #38bdf8; font-size: 0.85rem; cursor: pointer; }
+  #aliasLastBtn:active { background: #1e293b; }
 
   .log { background: #1e293b; border-radius: 12px; padding: 10px 14px; max-height: 150px;
     overflow-y: auto; margin-bottom: 14px; font-size: 0.85rem; }
@@ -83,11 +92,16 @@
   <label class="lbl">🎯 Phrase to count</label>
   <input id="phraseInput" value="shree sita ram">
 
-  <label class="lbl">Also count these (comma separated) — in case mic hears it differently</label>
-  <input id="aliasInput" placeholder="shri sita ram, sita ram, shree sitaram">
+  <label class="lbl">Also count these (comma separated)</label>
+  <input id="aliasInput" placeholder="श्री सीता राम, shri sita ram, sita ram, sitaram">
+
+  <label class="chk">
+    <input type="checkbox" id="fuzzyChk" checked>
+    Flexible matching — forgive small mic errors (shri/shree, sita/seeta, ram/raam)
+  </label>
 
   <div class="big-count">
-    <div class="word">✅ Phrases Completed</div>
+    <div class="word">✅ Chants Completed</div>
     <div class="num" id="bigNum">0</div>
     <div class="live" id="liveHint"></div>
   </div>
@@ -98,6 +112,8 @@
   </div>
 
   <div class="transcript" id="transcript">Your speech will appear here...</div>
+  <button id="aliasLastBtn">➕ Mic hears it wrong? Tap to count the last line above as your chant</button>
+
   <div class="log" id="logList"></div>
   <div class="freq-list" id="freqList"></div>
 
@@ -111,19 +127,22 @@ const $ = id => document.getElementById(id);
 const statusEl = $('status'), transcriptEl = $('transcript'), freqList = $('freqList');
 const bigNum = $('bigNum'), liveHint = $('liveHint'), logList = $('logList');
 const phraseInput = $('phraseInput'), aliasInput = $('aliasInput'), langSelect = $('langSelect');
-const micBtn = $('micBtn'), resetBtn = $('resetBtn');
+const micBtn = $('micBtn'), resetBtn = $('resetBtn'), fuzzyChk = $('fuzzyChk'), aliasLastBtn = $('aliasLastBtn');
 
 const SR = window.SpeechRecognition || window.webkitSpeechRecognition;
 
 // ---------- state + persistence ----------
-const STORAGE_KEY = 'speakcount-v1';
+const STORAGE_KEY = 'speakcount-v2';
 let counts = {}, total = 0, phraseHits = 0, logEntries = [];
+let pending = [];      // rolling buffer of unmatched words (catches chants split across transcript chunks)
+let lastHeard = '';
 
 function save() {
   try {
     localStorage.setItem(STORAGE_KEY, JSON.stringify({
       counts, total, phraseHits, logEntries,
-      phrase: phraseInput.value, alias: aliasInput.value, lang: langSelect.value
+      phrase: phraseInput.value, alias: aliasInput.value,
+      lang: langSelect.value, fuzzy: fuzzyChk.checked
     }));
   } catch (e) {}
 }
@@ -136,27 +155,83 @@ function load() {
     if (d.phrase != null) phraseInput.value = d.phrase;
     if (d.alias != null) aliasInput.value = d.alias;
     if (d.lang) langSelect.value = d.lang;
+    if (d.fuzzy != null) fuzzyChk.checked = d.fuzzy;
   } catch (e) {}
 }
-[phraseInput, aliasInput, langSelect].forEach(el => el.addEventListener('input', save));
+[phraseInput, aliasInput, langSelect, fuzzyChk].forEach(el =>
+  el.addEventListener('input', () => { pending = []; save(); }));
 
-// ---------- phrase matching ----------
-const norm = s => s.toLowerCase().replace(/[^\w\s']/g, '').replace(/\s+/g, ' ').trim();
+// ---------- normalization (Unicode-safe — keeps Devanagari + vowel marks) ----------
+const norm = s => s.toLowerCase().normalize('NFC')
+  .replace(/[^\p{L}\p{M}\p{N}\s']/gu, '')
+  .replace(/\s+/g, ' ')
+  .trim();
+
+// ---------- matching ----------
+function lev(a, b) {
+  const m = a.length, n = b.length;
+  const d = [];
+  for (let i = 0; i <= m; i++) d[i] = [i];
+  for (let j = 0; j <= n; j++) d[0][j] = j;
+  for (let i = 1; i <= m; i++)
+    for (let j = 1; j <= n; j++)
+      d[i][j] = Math.min(d[i-1][j] + 1, d[i][j-1] + 1,
+        d[i-1][j-1] + (a[i-1] === b[j-1] ? 0 : 1));
+  return d[m][n];
+}
+function wordMatch(heard, target) {
+  if (heard === target) return true;
+  if (!fuzzyChk.checked) return false;
+  if (target.length < 3 || heard.length < 2) return false; // too short → exact only
+  if (heard[0] !== target[0]) return false;                // must start the same
+  return lev(heard, target) <= 1;                          // one typo allowed
+}
 
 function getPhrases() {
-  return [phraseInput.value, ...aliasInput.value.split(',')]
+  return [phraseInput.value, ...aliasInput.value.split(/[,|،]/)]
     .map(norm).filter(Boolean).map(p => p.split(' '));
 }
-function countPhrases(text) {
-  const words = norm(text).split(' ').filter(Boolean);
+
+// Rolling counter: words accumulate; a chant counts even if split across results.
+function processWords(newWords) {
+  pending.push(...newWords);
   const phrases = getPhrases();
-  let hits = 0;
-  for (let i = 0; i < words.length; i++) {
+  if (!phrases.length) { if (pending.length > 60) pending = pending.slice(-60); return 0; }
+  let hits = 0, i = 0, consumedUpTo = -1;
+  outer:
+  while (i < pending.length) {
     for (const pw of phrases) {
-      if (pw.every((w, j) => words[i + j] === w)) { hits++; i += pw.length - 1; break; }
+      if (i + pw.length <= pending.length &&
+          pw.every((w, j) => wordMatch(pending[i + j], w))) {
+        hits++; i += pw.length; consumedUpTo = i - 1;
+        continue outer;
+      }
+    }
+    i++;
+  }
+  pending = pending.slice(consumedUpTo + 1);     // drop matched words (+ junk before them)
+  if (pending.length > 60) pending = pending.slice(-60);
+  return hits;
+}
+
+// Live progress: shows e.g. "shree sita __" while you're mid-chant.
+function liveProgress(extra) {
+  const phrases = getPhrases();
+  if (!phrases.length) return '';
+  const stream = extra ? [...pending, ...extra] : pending;
+  let best = null;
+  for (const pw of phrases) {
+    for (let len = Math.min(pw.length - 1, stream.length); len >= 1; len--) {
+      const tail = stream.slice(-len);
+      if (tail.every((w, j) => wordMatch(w, pw[j]))) {
+        if (!best || len > best.len) best = { pw, len };
+        break;
+      }
     }
   }
-  return hits;
+  if (!best) return '';
+  return '🙏 ' + best.pw.slice(0, best.len).join(' ') +
+         ' <b>' + best.pw.slice(best.len).join(' ') + '</b> …';
 }
 
 // ---------- rendering ----------
@@ -176,7 +251,7 @@ function renderLog() {
   logList.innerHTML = '';
   logEntries.forEach(e => {
     const div = document.createElement('div');
-    div.textContent = `✅ Phrase completed${e.hits > 1 ? ' ×' + e.hits : ''} — total #${e.total} `;
+    div.textContent = `✅ Chant completed${e.hits > 1 ? ' ×' + e.hits : ''} — total #${e.total} `;
     const t = document.createElement('span');
     t.className = 't'; t.textContent = e.time;
     div.appendChild(t);
@@ -203,11 +278,20 @@ if (SR) {
   recognition.continuous = true;
   recognition.interimResults = true;
 
+  const startRec = () => {
+    recognition.lang = langSelect.value;
+    try { recognition.start(); } catch (e) {}
+  };
+
   micBtn.addEventListener('click', () => {
     shouldListen = !shouldListen;
     if (shouldListen) {
-      recognition.lang = langSelect.value;
-      try { recognition.start(); } catch (e) {}
+      if (!getPhrases().length) {
+        statusEl.textContent = '⚠️ Enter a phrase to count first.';
+        shouldListen = false;
+        return;
+      }
+      startRec();
       requestWakeLock();
     } else {
       recognition.stop();
@@ -216,12 +300,12 @@ if (SR) {
 
   recognition.onstart = () => {
     micBtn.classList.add('listening');
-    statusEl.textContent = '🔴 Listening... say the phrase!';
+    statusEl.textContent = '🔴 Listening... chant away!';
   };
 
   recognition.onend = () => {
     if (shouldListen) {
-      setTimeout(() => { try { recognition.start(); } catch (e) {} }, 250);
+      setTimeout(startRec, 250);
     } else {
       setIdleUI();
       if (wakeLock) { wakeLock.release().catch(() => {}); wakeLock = null; }
@@ -239,7 +323,6 @@ if (SR) {
     } else if (e.error === 'network') {
       statusEl.textContent = '⚠️ Speech recognition needs an internet connection.';
     }
-    // 'aborted' etc. → ignore; onend handles restart
   };
 
   recognition.onresult = (event) => {
@@ -247,10 +330,10 @@ if (SR) {
     for (let i = event.resultIndex; i < event.results.length; i++) {
       const text = event.results[i][0].transcript;
       if (event.results[i].isFinal) {
-        norm(text).split(' ').filter(Boolean).forEach(w => {
-          counts[w] = (counts[w] || 0) + 1; total++;
-        });
-        const hits = countPhrases(text);
+        const words = norm(text).split(' ').filter(Boolean);
+        lastHeard = words.join(' ');
+        words.forEach(w => { counts[w] = (counts[w] || 0) + 1; total++; });
+        const hits = processWords(words);
         if (hits > 0) {
           phraseHits += hits;
           bigNum.textContent = phraseHits;
@@ -259,29 +342,37 @@ if (SR) {
           if (logEntries.length > 50) logEntries.length = 50;
           renderLog();
         }
-        liveHint.textContent = '';
         transcriptEl.textContent = '“' + text.trim() + '”';
+        liveHint.innerHTML = liveProgress();
         save();
       } else {
         interim += text;
       }
     }
     if (interim) {
-      const live = countPhrases(interim);
-      liveHint.textContent = live > 0 ? '👂 Heard it! finishing...' : '';
       transcriptEl.textContent = '“' + interim.trim() + '” ';
       const dots = document.createElement('span');
       dots.className = 'interim'; dots.textContent = '…';
       transcriptEl.appendChild(dots);
+      liveHint.innerHTML = liveProgress(norm(interim).split(' ').filter(Boolean));
     }
     render();
   };
 }
 
+// ---------- "count last heard as chant" ----------
+aliasLastBtn.addEventListener('click', () => {
+  if (!lastHeard) { statusEl.textContent = '⚠️ Nothing heard yet — say the chant first.'; return; }
+  aliasInput.value = aliasInput.value ? aliasInput.value + ', ' + lastHeard : lastHeard;
+  pending = [];
+  save();
+  statusEl.textContent = '✅ Now also counting: "' + lastHeard + '"';
+});
+
 // ---------- reset ----------
 resetBtn.addEventListener('click', () => {
   if (!confirm('Reset all counters and history?')) return;
-  counts = {}; total = 0; phraseHits = 0; logEntries = [];
+  counts = {}; total = 0; phraseHits = 0; logEntries = []; pending = [];
   bigNum.textContent = '0'; liveHint.textContent = '';
   logList.innerHTML = '';
   transcriptEl.textContent = 'Your speech will appear here...';
