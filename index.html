@@ -399,9 +399,13 @@
       }
     };
 
+    recognition.onstart = function(){
+      setStatus('Listening… chant naturally', true);
+    };
+
     recognition.onerror = function(event){
       if(event.error === 'no-speech' || event.error === 'audio-capture'){
-        // benign — keep going
+        // benign — keep going, onend will fire next and we restart there
         return;
       }
       if(event.error === 'not-allowed' || event.error === 'service-not-allowed'){
@@ -409,17 +413,37 @@
         shouldBeListening = false;
         stopUI();
       }
+      // other errors (network, aborted, etc.) fall through to onend,
+      // which handles the restart.
     };
 
+    let restartTimer = null;
+    function safeRestart(delay){
+      if(restartTimer) return; // a restart is already scheduled
+      restartTimer = setTimeout(function(){
+        restartTimer = null;
+        if(!shouldBeListening) return;
+        try{
+          recognition.start();
+        }catch(e){
+          // Recognition object wasn't fully reset yet (common right after
+          // stop/end fires). Back off a bit longer and try once more.
+          safeRestart(500);
+        }
+      }, delay || 250);
+    }
+
     recognition.onend = function(){
-      // The browser stops recognition after a pause even in "continuous"
-      // mode. If the user still wants to be listening, restart it —
-      // this also resets lastProcessedResultIndex since it's a fresh
-      // results array on restart.
+      // The browser stops recognition after almost every pause, even with
+      // continuous = true — this is normal, not an error. If the user still
+      // wants to be listening, restart it after a short delay (calling
+      // start() synchronously here is what was causing the silent freeze —
+      // Chrome throws InvalidStateError if the object hasn't reset yet).
       lastProcessedResultIndex = 0;
       carryWords = [];
       if(shouldBeListening){
-        try{ recognition.start(); }catch(e){ /* already starting */ }
+        setStatus('Listening… chant naturally', true);
+        safeRestart(250);
       } else {
         stopUI();
       }
