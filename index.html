@@ -1,105 +1,415 @@
 <!DOCTYPE html>
 <html lang="en">
 <head>
-<meta charset="UTF-8" />
-<meta name="viewport" content="width=device-width, initial-scale=1.0"/>
-<title>SpeakCount - Fixed Version</title>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Naam Jap Counter</title>
 <style>
-  * { margin: 0; padding: 0; box-sizing: border-box; font-family: 'Segoe UI', sans-serif; }
-  body { background: #0f172a; color: #e2e8f0; min-height: 100vh; display: flex; justify-content: center; padding: 20px; }
-  .app { width: 100%; max-width: 640px; }
-  h1 { text-align: center; margin: 16px 0; font-size: 1.6rem; }
-  h1 span { color: #38bdf8; }
-
-  .mic-section { text-align: center; margin: 18px 0; }
-  #micBtn { width: 84px; height: 84px; border-radius: 50%; border: none; cursor: pointer;
-    background: #334155; font-size: 2rem; transition: all 0.3s; }
-  #micBtn.listening { background: #ef4444; animation: pulse 1.5s infinite; }
-  #micBtn:disabled { opacity: 0.4; cursor: not-allowed; }
-  @keyframes pulse {
-    0% { box-shadow: 0 0 0 0 rgba(239,68,68,0.6); }
-    70% { box-shadow: 0 0 0 25px rgba(239,68,68,0); }
-    100% { box-shadow: 0 0 0 0 rgba(239,68,68,0); }
+  :root{
+    --bg: #241417;
+    --bg-2: #2f1a1d;
+    --card: #33191c;
+    --gold: #d9a441;
+    --gold-soft: #b98a3d;
+    --cream: #f2e8d8;
+    --cream-dim: #cbb99f;
+    --ember: #c65b3c;
+    --line: #4a2a2c;
   }
-  #status { margin-top: 10px; color: #94a3b8; font-size: 0.9rem; min-height: 1.2em; }
-  #transcript { margin-top: 16px; font-size: 1rem; min-height: 2em; }
-  #countDisplay { margin-top: 16px; font-size: 1.2rem; font-weight: bold; }
+  *{box-sizing:border-box;}
+  html,body{height:100%;}
+  body{
+    margin:0;
+    min-height:100vh;
+    background:
+      radial-gradient(ellipse at top, var(--bg-2) 0%, var(--bg) 55%);
+    color:var(--cream);
+    font-family: 'Iowan Old Style','Palatino Linotype',Georgia,serif;
+    display:flex;
+    align-items:center;
+    justify-content:center;
+    padding:24px;
+  }
 
+  .app{
+    width:100%;
+    max-width:420px;
+  }
+
+  .eyebrow{
+    text-align:center;
+    color:var(--cream-dim);
+    font-size:14px;
+    letter-spacing:0.02em;
+    margin-bottom:6px;
+  }
+
+  h1{
+    text-align:center;
+    font-size:26px;
+    font-weight:500;
+    margin:0 0 28px;
+    color:var(--cream);
+  }
+
+  .mala{
+    position:relative;
+    width:280px;
+    height:280px;
+    margin:0 auto 20px;
+    display:flex;
+    align-items:center;
+    justify-content:center;
+  }
+
+  .mala svg{position:absolute; inset:0; width:100%; height:100%;}
+
+  .count-core{
+    position:relative;
+    z-index:2;
+    text-align:center;
+  }
+
+  .count{
+    font-size:64px;
+    font-weight:600;
+    line-height:1;
+    color:var(--gold);
+    font-variant-numeric: tabular-nums;
+  }
+
+  .count-label{
+    font-size:13px;
+    color:var(--cream-dim);
+    margin-top:6px;
+  }
+
+  .mala-progress{
+    font-size:12px;
+    color:var(--cream-dim);
+    text-align:center;
+    margin-bottom:24px;
+  }
+
+  .word-row{
+    display:flex;
+    align-items:center;
+    justify-content:center;
+    gap:8px;
+    margin-bottom:24px;
+    color:var(--cream-dim);
+    font-size:14px;
+  }
+
+  .word-row input{
+    background:transparent;
+    border:none;
+    border-bottom:1px solid var(--gold-soft);
+    color:var(--gold);
+    font-family:inherit;
+    font-size:16px;
+    text-align:center;
+    width:110px;
+    padding:2px 4px;
+  }
+  .word-row input:focus{outline:none; border-bottom-color:var(--gold);}
+
+  .controls{
+    display:flex;
+    gap:12px;
+    justify-content:center;
+    margin-bottom:20px;
+  }
+
+  button{
+    font-family:inherit;
+    font-size:15px;
+    padding:12px 22px;
+    border-radius:999px;
+    border:1px solid var(--gold-soft);
+    background:transparent;
+    color:var(--cream);
+    cursor:pointer;
+    transition: background 0.15s ease, color 0.15s ease, transform 0.1s ease;
+  }
+  button:active{transform:scale(0.97);}
+
+  #toggleBtn{
+    background:var(--gold);
+    color:#241417;
+    border-color:var(--gold);
+    font-weight:600;
+    min-width:140px;
+  }
+  #toggleBtn.listening{
+    background:var(--ember);
+    border-color:var(--ember);
+    color:var(--cream);
+  }
+
+  #resetBtn{
+    background:transparent;
+    color:var(--cream-dim);
+    border-color:var(--line);
+  }
+  #resetBtn:hover{border-color:var(--gold-soft); color:var(--cream);}
+
+  .status{
+    text-align:center;
+    font-size:13px;
+    color:var(--cream-dim);
+    min-height:18px;
+    margin-bottom:14px;
+  }
+  .status.live{color:var(--ember);}
+
+  .transcript-box{
+    background:var(--card);
+    border:1px solid var(--line);
+    border-radius:12px;
+    padding:14px 16px;
+    min-height:52px;
+    font-size:15px;
+    color:var(--cream-dim);
+    line-height:1.5;
+  }
+  .transcript-box .heard{color:var(--gold); font-style:italic;}
+
+  .footnote{
+    margin-top:18px;
+    text-align:center;
+    font-size:12px;
+    color:#7d6558;
+    line-height:1.6;
+  }
+
+  @media (prefers-reduced-motion: no-preference){
+    .pulse{animation: pulse 1.6s ease-in-out infinite;}
+  }
+  @keyframes pulse{
+    0%,100%{ opacity:1; }
+    50%{ opacity:0.55; }
+  }
 </style>
 </head>
 <body>
+
 <div class="app">
-  <h1>🎤 Speak<span>Count</span></h1>
-  <div class="mic-section">
-    <button id="micBtn">🎤</button>
-    <div id="status">Tap mic to start</div>
+  <div class="eyebrow">जप गणना</div>
+  <h1>Naam Jap Counter</h1>
+
+  <div class="mala">
+    <svg viewBox="0 0 280 280">
+      <circle cx="140" cy="140" r="128" fill="none" stroke="#4a2a2c" stroke-width="2"/>
+      <circle id="ring" cx="140" cy="140" r="128" fill="none" stroke="#d9a441" stroke-width="3"
+              stroke-linecap="round" stroke-dasharray="804" stroke-dashoffset="804"
+              transform="rotate(-90 140 140)"/>
+    </svg>
+    <div class="count-core">
+      <div class="count" id="count">0</div>
+      <div class="count-label" id="wordLabel">RAM</div>
+    </div>
   </div>
-  <div id="transcript">Your speech will appear here...</div>
-  <div id="countDisplay">Count: 0</div>
+
+  <div class="mala-progress" id="malaProgress">0 malas completed (108 per mala)</div>
+
+  <div class="word-row">
+    <span>counting</span>
+    <input id="targetWord" type="text" value="Ram" spellcheck="false">
+  </div>
+
+  <div class="controls">
+    <button id="toggleBtn">Start Listening</button>
+    <button id="resetBtn">Reset</button>
+  </div>
+
+  <div class="status" id="status">Tap start and begin chanting</div>
+
+  <div class="transcript-box">
+    <span id="transcript">Last heard will appear here…</span>
+  </div>
+
+  <div class="footnote">
+    Works in Chrome / Edge (uses the browser's speech recognition).<br>
+    Counts are taken only from finalized phrases, so partial words won't double-count.
+  </div>
 </div>
 
 <script>
-const recognition = window.SpeechRecognition || window.webkitSpeechRecognition;
-const micBtn = document.getElementById('micBtn');
-const statusEl = document.getElementById('status');
-const transcriptEl = document.getElementById('transcript');
-const countEl = document.getElementById('countDisplay');
+(function(){
+  const countEl = document.getElementById('count');
+  const wordLabelEl = document.getElementById('wordLabel');
+  const malaProgressEl = document.getElementById('malaProgress');
+  const targetWordInput = document.getElementById('targetWord');
+  const toggleBtn = document.getElementById('toggleBtn');
+  const resetBtn = document.getElementById('resetBtn');
+  const statusEl = document.getElementById('status');
+  const transcriptEl = document.getElementById('transcript');
+  const ring = document.getElementById('ring');
 
-let recognitionActive = false;
-let phraseCount = 0;
+  const RING_LENGTH = 804; // 2*pi*128 approx
+  const MALA_SIZE = 108;
 
-const targetPhrase = "shree sita ram"; // Set your phrase here
+  let count = 0;
+  let listening = false;
+  let recognition = null;
+  let shouldBeListening = false; // tracks user intent, used to auto-restart
+  // Track how many results we've already scanned so we never re-count the
+  // same finalized phrase twice. This is the key fix for "wrong counting":
+  // the Web Speech API replays the whole results array on every event, and
+  // if you count from interim (non-final) results, or re-scan results you
+  // already processed, every partial revision of the same phrase gets
+  // counted again.
+  let lastProcessedResultIndex = 0;
 
-// Setup recognition
-const recog = new recognition();
-recog.continuous = true;
-recog.interimResults = true;
-recog.lang = 'hi-IN'; // Use Hindi or your preferred language
-
-recog.onstart = () => {
-  recognitionActive = true;
-  statusEl.textContent = 'Listening...';
-  micBtn.textContent = '🛑'; // change button to indicate stop
-  micBtn.classList.add('listening');
-};
-
-recog.onend = () => {
-  recognitionActive = false;
-  statusEl.textContent = 'Stopped. Tap to start.';
-  micBtn.textContent = '🎤';
-  micBtn.classList.remove('listening');
-};
-
-recog.onresult = (event) => {
-  let finalTranscript = '';
-  for (let i = event.resultIndex; i < event.results.length; i++) {
-    const transcript = event.results[i][0].transcript;
-    if (event.results[i].isFinal) {
-      finalTranscript += transcript + ' ';
-    }
+  function getTargetWord(){
+    return (targetWordInput.value || 'Ram').trim().toLowerCase();
   }
-  // Show interim or final transcript
-  transcriptEl.textContent = finalTranscript;
 
-  // Check if the final transcript contains the phrase
-  const normalize = str => str.toLowerCase().normalize('NFC').replace(/[^\p{L}\p{M}\p{N}\s‌‍']/gu, '').trim();
-  const normalizedTranscript = normalize(finalTranscript);
-  const normalizedTarget = normalize(targetPhrase);
-
-  if (normalizedTranscript.includes(normalizedTarget)) {
-    phraseCount++;
-    countEl.textContent = 'Count: ' + phraseCount;
+  function updateWordLabel(){
+    wordLabelEl.textContent = (targetWordInput.value || 'RAM').toUpperCase();
   }
-};
 
-// Toggle recognition on button click
-micBtn.onclick = () => {
-  if (recognitionActive) {
-    recog.stop();
+  function normalizeAndCount(text, word){
+    if(!word) return 0;
+    // strip punctuation, collapse whitespace, lowercase
+    const cleaned = text.toLowerCase().replace(/[.,!?;:"'’‘\-]/g, ' ');
+    // escape regex special chars in the target word
+    const escaped = word.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
+    const re = new RegExp('\\b' + escaped + '\\b', 'g');
+    const matches = cleaned.match(re);
+    return matches ? matches.length : 0;
+  }
+
+  function renderCount(){
+    countEl.textContent = count;
+    const malas = Math.floor(count / MALA_SIZE);
+    const remainder = count % MALA_SIZE;
+    malaProgressEl.textContent = malas > 0
+      ? `${malas} mala${malas > 1 ? 's' : ''} complete · ${remainder}/${MALA_SIZE} into the next`
+      : `${remainder}/${MALA_SIZE} into the first mala`;
+    const progress = remainder / MALA_SIZE;
+    const offset = RING_LENGTH * (1 - progress);
+    ring.style.strokeDashoffset = offset;
+  }
+
+  function setStatus(text, live){
+    statusEl.textContent = text;
+    statusEl.classList.toggle('live', !!live);
+  }
+
+  function showHeard(text){
+    transcriptEl.innerHTML = '';
+    const span = document.createElement('span');
+    span.className = 'heard';
+    span.textContent = '"' + text + '"';
+    transcriptEl.appendChild(span);
+  }
+
+  const SpeechRecognitionCtor = window.SpeechRecognition || window.webkitSpeechRecognition;
+
+  if(!SpeechRecognitionCtor){
+    setStatus('Speech recognition is not supported in this browser. Try Chrome or Edge.', false);
+    toggleBtn.disabled = true;
   } else {
-    recog.start();
+    recognition = new SpeechRecognitionCtor();
+    recognition.lang = 'en-IN';
+    recognition.continuous = true;
+    recognition.interimResults = true;
+
+    recognition.onresult = function(event){
+      const word = getTargetWord();
+
+      // Only ever look at NEW final results starting from where we left off.
+      // Skipping already-processed indices is what prevents re-counting.
+      for(let i = lastProcessedResultIndex; i < event.results.length; i++){
+        const result = event.results[i];
+        if(result.isFinal){
+          const finalText = result[0].transcript.trim();
+          if(finalText){
+            const found = normalizeAndCount(finalText, word);
+            if(found > 0){
+              count += found;
+              renderCount();
+            }
+            showHeard(finalText);
+          }
+          lastProcessedResultIndex = i + 1;
+        }
+      }
+    };
+
+    recognition.onerror = function(event){
+      if(event.error === 'no-speech' || event.error === 'audio-capture'){
+        // benign — keep going
+        return;
+      }
+      if(event.error === 'not-allowed' || event.error === 'service-not-allowed'){
+        setStatus('Microphone access denied. Allow mic permission and try again.', false);
+        shouldBeListening = false;
+        stopUI();
+      }
+    };
+
+    recognition.onend = function(){
+      // The browser stops recognition after a pause even in "continuous"
+      // mode. If the user still wants to be listening, restart it —
+      // this also resets lastProcessedResultIndex since it's a fresh
+      // results array on restart.
+      lastProcessedResultIndex = 0;
+      if(shouldBeListening){
+        try{ recognition.start(); }catch(e){ /* already starting */ }
+      } else {
+        stopUI();
+      }
+    };
   }
-};
+
+  function startUI(){
+    listening = true;
+    toggleBtn.textContent = 'Stop Listening';
+    toggleBtn.classList.add('listening');
+    setStatus('Listening… chant naturally', true);
+  }
+
+  function stopUI(){
+    listening = false;
+    toggleBtn.textContent = 'Start Listening';
+    toggleBtn.classList.remove('listening');
+    setStatus('Paused. Tap start to resume.', false);
+  }
+
+  toggleBtn.addEventListener('click', function(){
+    if(!recognition) return;
+    if(!listening){
+      shouldBeListening = true;
+      lastProcessedResultIndex = 0;
+      try{
+        recognition.start();
+        startUI();
+      }catch(e){
+        // recognition might already be in a starting state; ignore
+      }
+    } else {
+      shouldBeListening = false;
+      recognition.stop();
+      stopUI();
+    }
+  });
+
+  resetBtn.addEventListener('click', function(){
+    count = 0;
+    renderCount();
+    transcriptEl.textContent = 'Last heard will appear here…';
+    setStatus(listening ? 'Listening… chant naturally' : 'Tap start and begin chanting', listening);
+  });
+
+  targetWordInput.addEventListener('input', updateWordLabel);
+
+  updateWordLabel();
+  renderCount();
+})();
 </script>
+
 </body>
 </html>
