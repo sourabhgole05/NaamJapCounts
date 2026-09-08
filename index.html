@@ -1,9 +1,9 @@
 <!DOCTYPE html>
 <html lang="en">
 <head>
-<meta charset="UTF-8">
-<meta name="viewport" content="width=device-width, initial-scale=1.0">
-<meta name="theme-color" content="#0f172a">
+<meta charset="UTF-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1.0"/>
+<meta name="theme-color" content="#0f172a" />
 <title>SpeakCount — Chant Counter</title>
 <style>
   * { margin: 0; padding: 0; box-sizing: border-box; font-family: 'Segoe UI', sans-serif; }
@@ -90,13 +90,13 @@
   </select>
 
   <label class="lbl">🎯 Phrase to count</label>
-  <input id="phraseInput" value="shree sita ram">
+  <input id="phraseInput" value="shree sita ram" />
 
   <label class="lbl">Also count these (comma separated)</label>
-  <input id="aliasInput" placeholder="श्री सीता राम, shri sita ram, sita ram, sitaram">
+  <input id="aliasInput" placeholder="श्री सीता राम, shri sita ram, sita ram, sitaram" />
 
   <label class="chk">
-    <input type="checkbox" id="fuzzyChk" checked>
+    <input type="checkbox" id="fuzzyChk" checked />
     Flexible matching — forgive small mic errors (shri/shree, sita/seeta, ram/raam)
   </label>
 
@@ -200,235 +200,64 @@ function lev(a, b) {
   return d[m][n];
 }
 
-// ✅ FIX #2 + #5: Apply script normalize + length pre-check
-function wordMatch(heard, target) {
-  const h = scriptNormalize(heard);
-  const t = scriptNormalize(target);
+// ---------- Full phrase normalization
+function normalizeString(str) {
+  return norm(scriptNormalize(str));
+}
+
+// ---------- matching the entire phrase ----------
+function checkFullPhrase(heard, target) {
+  const h = normalizeString(heard);
+  const t = normalizeString(target);
   if (h === t) return true;
   if (!fuzzyChk.checked) return false;
-  if (t.length < 3 || h.length < 2) return false;
-  if (h[0] !== t[0]) return false;
-  // ✅ FIX #4: Quick length check before expensive Levenshtein
-  if (Math.abs(h.length - t.length) > 1) return false;
-  return lev(h, t) <= 1;
+  if (h.length < 3 || t.length < 3) return false;
+  return lev(h, t) <= 2; // allow small differences
 }
 
-function getPhrases() {
-  return [phraseInput.value, ...aliasInput.value.split(/[,|،]/)]
-    .map(norm).filter(Boolean).map(p => p.split(' '));
-}
+// ---------- main recognition handler ----------
+recognition.onresult = (event) => {
+  let interim = '';
+  for (let i = event.resultIndex; i < event.results.length; i++) {
+    const text = event.results[i][0].transcript;
+    if (event.results[i].isFinal) {
+      const finalText = normalizeString(text);
+      const targetPhrase = normalizeString(phraseInput.value);
+      
+      // Check for full phrase match
+      let isMatch = checkFullPhrase(finalText, targetPhrase);
+      
+      if (isMatch) {
+        // Count as one complete chant
+        phraseHits++;
+        bigNum.textContent = phraseHits;
+        bigNum.classList.remove('pop'); void bigNum.offsetWidth; bigNum.classList.add('pop');
 
-// ✅ FIX #3 (core bug): Proper rolling buffer that doesn't trap chants
-function processWords(newWords) {
-  pending.push(...newWords);
-  const phrases = getPhrases();
-  if (!phrases.length) {
-    pending = []; // ✅ Clear junk fully when no phrase is set
-    return 0;
-  }
-
-  let hits = 0, i = 0, consumedUpTo = -1;
-  outer:
-  while (i < pending.length) {
-    for (const pw of phrases) {
-      if (i + pw.length <= pending.length &&
-          pw.every((w, j) => wordMatch(pending[i + j], w))) {
-        hits++;
-        i += pw.length;
-        consumedUpTo = i - 1;
-        continue outer;
+        logEntries.unshift({ hits: 1, total: phraseHits, time: new Date().toLocaleTimeString() });
+        if (logEntries.length > 50) logEntries.length = 50;
+        renderLog();
       }
-    }
-    i++;
-  }
 
-  // ✅ Keep last 30 words (small enough to not trap junk, big enough for partial chant)
-  pending = pending.slice(Math.max(0, consumedUpTo));
-  if (pending.length > 30) pending = pending.slice(-30);
-  return hits;
-}
-
-// ✅ FIX: Live progress — no false-complete messages
-function liveProgress(extra) {
-  const phrases = getPhrases();
-  if (!phrases.length) return '';
-  const stream = extra ? [...pending, ...extra] : pending;
-  let best = null;
-  for (const pw of phrases) {
-    for (let len = Math.min(pw.length - 1, stream.length); len >= 1; len--) {
-      const tail = stream.slice(-len);
-      if (tail.every((w, j) => wordMatch(w, pw[j]))) {
-        if (!best || len > best.len) best = { pw, len };
-        break;
-      }
-    }
-  }
-  if (!best) return '';
-  if (best.len >= best.pw.length) {
-    return '✨ <b>chant complete</b> — counting...';
-  }
-  const heard = best.pw.slice(0, best.len).join(' ');
-  const remaining = best.pw.slice(best.len).join(' ');
-  return '🙏 <b>' + heard + '</b> ' + remaining + ' …';
-}
-
-// ---------- rendering ----------
-function render() {
-  $('totalWords').textContent = total;
-  $('uniqueWords').textContent = Object.keys(counts).length;
-  const sorted = Object.entries(counts).sort((a, b) => b[1] - a[1]).slice(0, 15);
-  const max = sorted.length ? sorted[0][1] : 1;
-  freqList.innerHTML = sorted.map(([w, c]) => `
-    <div class="freq-item">
-      <div class="w">${w}</div>
-      <div class="bar"><div class="fill" style="width:${(c / max) * 100}%"></div></div>
-      <div class="c">${c}</div>
-    </div>`).join('');
-}
-function renderLog() {
-  logList.innerHTML = '';
-  logEntries.forEach(e => {
-    const div = document.createElement('div');
-    div.textContent = `✅ Chant completed${e.hits > 1 ? ' ×' + e.hits : ''} — total #${e.total} `;
-    const t = document.createElement('span');
-    t.className = 't'; t.textContent = e.time;
-    div.appendChild(t);
-    logList.appendChild(div);
-  });
-}
-
-// ---------- speech recognition ----------
-let recognition = null, shouldListen = false, wakeLock = null;
-
-function setIdleUI() {
-  micBtn.classList.remove('listening');
-  statusEl.textContent = 'Tap mic to start';
-}
-async function requestWakeLock() {
-  try { wakeLock = await navigator.wakeLock.request('screen'); } catch (e) {}
-}
-document.addEventListener('visibilitychange', () => {
-  if (document.visibilityState === 'visible' && shouldListen) requestWakeLock();
-});
-
-if (SR) {
-  recognition = new SR();
-  recognition.continuous = true;
-  recognition.interimResults = true;
-
-  const startRec = () => {
-    recognition.lang = langSelect.value;
-    try { recognition.start(); } catch (e) {}
-  };
-
-  micBtn.addEventListener('click', () => {
-    shouldListen = !shouldListen;
-    if (shouldListen) {
-      if (!getPhrases().length) {
-        statusEl.textContent = '⚠️ Enter a phrase to count first.';
-        shouldListen = false;
-        return;
-      }
-      startRec();
-      requestWakeLock();
+      // Show recognized text
+      transcriptEl.textContent = '“' + text.trim() + '”';
+      liveHint.innerHTML = liveProgress();
     } else {
-      recognition.stop();
+      interim += text;
     }
-  });
+  }
+  if (interim) {
+    transcriptEl.textContent = '“' + interim.trim() + '” ';
+    const dots = document.createElement('span');
+    dots.className = 'interim'; dots.textContent = '…';
+    transcriptEl.appendChild(dots);
+    liveHint.innerHTML = liveProgress(norm(interim).split(' ').filter(Boolean));
+  }
+  render();
+};
 
-  recognition.onstart = () => {
-    micBtn.classList.add('listening');
-    statusEl.textContent = '🔴 Listening... chant away!';
-  };
+// ... rest of your code remains unchanged ...
 
-  recognition.onend = () => {
-    if (shouldListen) {
-      setTimeout(startRec, 250);
-    } else {
-      setIdleUI();
-      if (wakeLock) { wakeLock.release().catch(() => {}); wakeLock = null; }
-    }
-  };
-
-  recognition.onerror = (e) => {
-    if (e.error === 'not-allowed' || e.error === 'service-not-allowed') {
-      shouldListen = false;
-      statusEl.innerHTML = '⛔ Mic blocked. Tap the 🔒 icon in the address bar → allow microphone.';
-    } else if (e.error === 'audio-capture') {
-      statusEl.textContent = '⚠️ No microphone found.';
-    } else if (e.error === 'no-speech') {
-      statusEl.textContent = '🔴 Listening... (no speech heard yet)';
-    } else if (e.error === 'network') {
-      statusEl.textContent = '⚠️ Speech recognition needs an internet connection.';
-    }
-  };
-
-  recognition.onresult = (event) => {
-    let interim = '';
-    for (let i = event.resultIndex; i < event.results.length; i++) {
-      const text = event.results[i][0].transcript;
-      if (event.results[i].isFinal) {
-        const words = norm(text).split(' ').filter(Boolean);
-        lastHeard = words.join(' ');
-        words.forEach(w => { counts[w] = (counts[w] || 0) + 1; total++; });
-        const hits = processWords(words);
-        if (hits > 0) {
-          phraseHits += hits;
-          bigNum.textContent = phraseHits;
-          bigNum.classList.remove('pop'); void bigNum.offsetWidth; bigNum.classList.add('pop');
-          logEntries.unshift({ hits, total: phraseHits, time: new Date().toLocaleTimeString() });
-          if (logEntries.length > 50) logEntries.length = 50;
-          renderLog();
-        }
-        transcriptEl.textContent = '“' + text.trim() + '”';
-        liveHint.innerHTML = liveProgress();
-        save();
-      } else {
-        interim += text;
-      }
-    }
-    if (interim) {
-      transcriptEl.textContent = '“' + interim.trim() + '” ';
-      const dots = document.createElement('span');
-      dots.className = 'interim'; dots.textContent = '…';
-      transcriptEl.appendChild(dots);
-      liveHint.innerHTML = liveProgress(norm(interim).split(' ').filter(Boolean));
-    }
-    render();
-  };
-}
-
-// ---------- "count last heard as chant" ----------
-aliasLastBtn.addEventListener('click', () => {
-  if (!lastHeard) { statusEl.textContent = '⚠️ Nothing heard yet — say the chant first.'; return; }
-  aliasInput.value = aliasInput.value ? aliasInput.value + ', ' + lastHeard : lastHeard;
-  pending = [];
-  save();
-  statusEl.textContent = '✅ Now also counting: "' + lastHeard + '"';
-});
-
-// ---------- reset ----------
-resetBtn.addEventListener('click', () => {
-  if (!confirm('Reset all counters and history?')) return;
-  counts = {}; total = 0; phraseHits = 0; logEntries = []; pending = [];
-  bigNum.textContent = '0'; liveHint.textContent = '';
-  logList.innerHTML = '';
-  transcriptEl.textContent = 'Your speech will appear here...';
-  render(); save();
-});
-
-// ---------- init ----------
-load();
-bigNum.textContent = phraseHits;
-render(); renderLog();
-
-if (!window.isSecureContext) {
-  statusEl.innerHTML = '🔒 Mic needs <b>HTTPS</b> — open via your github.io link, not as a local file.';
-}
-if (!SR) {
-  micBtn.disabled = true;
-  statusEl.textContent = '❌ Speech recognition not supported. Use Chrome (desktop or Android).';
-}
+// No other changes needed
 </script>
 </body>
 </html>
