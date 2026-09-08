@@ -168,12 +168,21 @@
     border:1px solid var(--line);
     border-radius:12px;
     padding:14px 16px;
-    min-height:52px;
+    min-height:66px;
     font-size:15px;
     color:var(--cream-dim);
     line-height:1.5;
   }
   .transcript-box .heard{color:var(--gold); font-style:italic;}
+  .live-line{
+    font-size:12px;
+    color:var(--cream-dim);
+    text-transform:uppercase;
+    letter-spacing:0.04em;
+    margin-bottom:6px;
+    min-height:14px;
+  }
+  .live-line .interim{color:var(--ember); font-style:normal; text-transform:none; letter-spacing:0; font-size:15px;}
 
   .footnote{
     margin-top:18px;
@@ -215,7 +224,7 @@
 
   <div class="word-row">
     <span>counting</span>
-    <input id="targetWord" type="text" value="Ram" spellcheck="false">
+    <input id="targetWord" type="text" value="Shree Sita Ram" spellcheck="false">
   </div>
 
   <div class="controls">
@@ -226,12 +235,13 @@
   <div class="status" id="status">Tap start and begin chanting</div>
 
   <div class="transcript-box">
+    <div class="live-line" id="liveLine"></div>
     <span id="transcript">Last heard will appear here…</span>
   </div>
 
   <div class="footnote">
     Works in Chrome / Edge (uses the browser's speech recognition).<br>
-    Counts are taken only from finalized phrases, so partial words won't double-count.
+    Counting looks for your whole phrase in order, so "Shree Sita Ram" only counts when all three words are heard together — and it counts every repeat, with no upper limit.
   </div>
 </div>
 
@@ -262,23 +272,52 @@
   // counted again.
   let lastProcessedResultIndex = 0;
 
-  function getTargetWord(){
-    return (targetWordInput.value || 'Ram').trim().toLowerCase();
+  // Carries trailing words that didn't complete a phrase match yet, so a
+  // phrase spoken right across a pause boundary (e.g. "Shree Sita" ends one
+  // final chunk, "Ram" starts the next) still gets matched instead of lost.
+  let carryWords = [];
+
+  function cleanToWords(text){
+    return text
+      .toLowerCase()
+      .replace(/[.,!?;:"'’‘\-]/g, ' ')
+      .split(/\s+/)
+      .filter(Boolean);
+  }
+
+  function getTargetWords(){
+    const raw = (targetWordInput.value || 'Shree Sita Ram').trim();
+    return cleanToWords(raw);
   }
 
   function updateWordLabel(){
-    wordLabelEl.textContent = (targetWordInput.value || 'RAM').toUpperCase();
+    wordLabelEl.textContent = (targetWordInput.value || 'SHREE SITA RAM').toUpperCase();
   }
 
-  function normalizeAndCount(text, word){
-    if(!word) return 0;
-    // strip punctuation, collapse whitespace, lowercase
-    const cleaned = text.toLowerCase().replace(/[.,!?;:"'’‘\-]/g, ' ');
-    // escape regex special chars in the target word
-    const escaped = word.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
-    const re = new RegExp('\\b' + escaped + '\\b', 'g');
-    const matches = cleaned.match(re);
-    return matches ? matches.length : 0;
+  // Counts every non-overlapping occurrence of targetWords inside combined
+  // (carryWords + new words), in order. No upper limit — every repeat of
+  // the full phrase adds 1. Leftover trailing words that couldn't complete
+  // a match are kept in carryWords for the next chunk.
+  function countPhraseOccurrences(newWords, targetWords){
+    if(targetWords.length === 0) return 0;
+    const combined = carryWords.concat(newWords);
+    let i = 0;
+    let matches = 0;
+    while(i <= combined.length - targetWords.length){
+      let isMatch = true;
+      for(let j = 0; j < targetWords.length; j++){
+        if(combined[i + j] !== targetWords[j]){ isMatch = false; break; }
+      }
+      if(isMatch){
+        matches++;
+        i += targetWords.length;
+      } else {
+        i++;
+      }
+    }
+    const carryLen = Math.min(targetWords.length - 1, combined.length - i);
+    carryWords = carryLen > 0 ? combined.slice(combined.length - carryLen) : [];
+    return matches;
   }
 
   function renderCount(){
@@ -306,6 +345,16 @@
     transcriptEl.appendChild(span);
   }
 
+  const liveLineEl = document.getElementById('liveLine');
+  function showLive(text){
+    if(!text){ liveLineEl.textContent = ''; return; }
+    liveLineEl.innerHTML = '';
+    const span = document.createElement('span');
+    span.className = 'interim';
+    span.textContent = text;
+    liveLineEl.appendChild(span);
+  }
+
   const SpeechRecognitionCtor = window.SpeechRecognition || window.webkitSpeechRecognition;
 
   if(!SpeechRecognitionCtor){
@@ -318,7 +367,17 @@
     recognition.interimResults = true;
 
     recognition.onresult = function(event){
-      const word = getTargetWord();
+      const targetWords = getTargetWords();
+
+      // Show the latest interim (not-yet-final) words live, so you see
+      // what it's hearing while you're still mid-phrase.
+      let interimText = '';
+      for(let i = lastProcessedResultIndex; i < event.results.length; i++){
+        if(!event.results[i].isFinal){
+          interimText += event.results[i][0].transcript;
+        }
+      }
+      showLive(interimText.trim());
 
       // Only ever look at NEW final results starting from where we left off.
       // Skipping already-processed indices is what prevents re-counting.
@@ -327,7 +386,8 @@
         if(result.isFinal){
           const finalText = result[0].transcript.trim();
           if(finalText){
-            const found = normalizeAndCount(finalText, word);
+            const words = cleanToWords(finalText);
+            const found = countPhraseOccurrences(words, targetWords);
             if(found > 0){
               count += found;
               renderCount();
@@ -357,6 +417,7 @@
       // this also resets lastProcessedResultIndex since it's a fresh
       // results array on restart.
       lastProcessedResultIndex = 0;
+      carryWords = [];
       if(shouldBeListening){
         try{ recognition.start(); }catch(e){ /* already starting */ }
       } else {
@@ -384,6 +445,7 @@
     if(!listening){
       shouldBeListening = true;
       lastProcessedResultIndex = 0;
+      carryWords = [];
       try{
         recognition.start();
         startUI();
@@ -399,12 +461,17 @@
 
   resetBtn.addEventListener('click', function(){
     count = 0;
+    carryWords = [];
     renderCount();
     transcriptEl.textContent = 'Last heard will appear here…';
+    showLive('');
     setStatus(listening ? 'Listening… chant naturally' : 'Tap start and begin chanting', listening);
   });
 
-  targetWordInput.addEventListener('input', updateWordLabel);
+  targetWordInput.addEventListener('input', function(){
+    updateWordLabel();
+    carryWords = [];
+  });
 
   updateWordLabel();
   renderCount();
