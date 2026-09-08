@@ -3,6 +3,7 @@
 <head>
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
+<meta name="theme-color" content="#0f172a">
 <title>SpeakCount — Phrase Counter</title>
 <style>
   * { margin: 0; padding: 0; box-sizing: border-box; font-family: 'Segoe UI', sans-serif; }
@@ -15,17 +16,18 @@
   #micBtn { width: 84px; height: 84px; border-radius: 50%; border: none; cursor: pointer;
     background: #334155; font-size: 2rem; transition: all 0.3s; }
   #micBtn.listening { background: #ef4444; animation: pulse 1.5s infinite; }
+  #micBtn:disabled { opacity: 0.4; cursor: not-allowed; }
   @keyframes pulse {
     0% { box-shadow: 0 0 0 0 rgba(239,68,68,0.6); }
     70% { box-shadow: 0 0 0 25px rgba(239,68,68,0); }
     100% { box-shadow: 0 0 0 0 rgba(239,68,68,0); }
   }
-  #status { margin-top: 10px; color: #94a3b8; font-size: 0.9rem; }
+  #status { margin-top: 10px; color: #94a3b8; font-size: 0.9rem; min-height: 1.2em; }
 
   .lbl { font-size: 0.8rem; color: #94a3b8; display: block; margin: 14px 0 6px; }
-  .app input { width: 100%; padding: 12px 16px; border-radius: 8px; border: 1px solid #334155;
+  .app input, .app select { width: 100%; padding: 12px 16px; border-radius: 8px; border: 1px solid #334155;
     background: #1e293b; color: #fff; font-size: 1rem; outline: none; }
-  .app input:focus { border-color: #38bdf8; }
+  .app input:focus, .app select:focus { border-color: #38bdf8; }
 
   .big-count { background: linear-gradient(135deg, #0ea5e9, #6366f1); border-radius: 16px;
     padding: 22px; text-align: center; margin: 20px 0; }
@@ -59,6 +61,7 @@
 
   #resetBtn { width: 100%; margin-top: 16px; padding: 12px; border: none; border-radius: 8px;
     background: #334155; color: #e2e8f0; font-size: 1rem; cursor: pointer; }
+  .note { text-align: center; color: #64748b; font-size: 0.75rem; margin-top: 12px; }
 </style>
 </head>
 <body>
@@ -69,6 +72,13 @@
     <button id="micBtn">🎤</button>
     <div id="status">Tap mic to start</div>
   </div>
+
+  <label class="lbl">🗣️ Recognition language</label>
+  <select id="langSelect">
+    <option value="hi-IN" selected>Hindi (India) — best for mantras</option>
+    <option value="en-IN">English (India)</option>
+    <option value="en-US">English (US)</option>
+  </select>
 
   <label class="lbl">🎯 Phrase to count</label>
   <input id="phraseInput" value="shree sita ram">
@@ -92,65 +102,113 @@
   <div class="freq-list" id="freqList"></div>
 
   <button id="resetBtn">↺ Reset Counters</button>
+  <div class="note">Counts auto-save on this device • Best in Chrome</div>
 </div>
 
 <script>
-  const SR = window.SpeechRecognition || window.webkitSpeechRecognition;
-  const statusEl = document.getElementById('status');
-  const transcriptEl = document.getElementById('transcript');
-  const freqList = document.getElementById('freqList');
-  const bigNum = document.getElementById('bigNum');
-  const liveHint = document.getElementById('liveHint');
-  const logList = document.getElementById('logList');
-  const phraseInput = document.getElementById('phraseInput');
-  const aliasInput = document.getElementById('aliasInput');
-  const micBtn = document.getElementById('micBtn');
+'use strict';
+const $ = id => document.getElementById(id);
+const statusEl = $('status'), transcriptEl = $('transcript'), freqList = $('freqList');
+const bigNum = $('bigNum'), liveHint = $('liveHint'), logList = $('logList');
+const phraseInput = $('phraseInput'), aliasInput = $('aliasInput'), langSelect = $('langSelect');
+const micBtn = $('micBtn'), resetBtn = $('resetBtn');
 
-  if (!window.isSecureContext) {
-    statusEl.innerHTML = '🔒 Mic blocked! Open via <b>https://</b> link — not from file manager.';
-  }
-  if (!SR) {
-    statusEl.textContent = '❌ Not supported. Use Chrome.';
-    micBtn.disabled = true;
-  }
+const SR = window.SpeechRecognition || window.webkitSpeechRecognition;
 
-  const recognition = new SR();
+// ---------- state + persistence ----------
+const STORAGE_KEY = 'speakcount-v1';
+let counts = {}, total = 0, phraseHits = 0, logEntries = [];
+
+function save() {
+  try {
+    localStorage.setItem(STORAGE_KEY, JSON.stringify({
+      counts, total, phraseHits, logEntries,
+      phrase: phraseInput.value, alias: aliasInput.value, lang: langSelect.value
+    }));
+  } catch (e) {}
+}
+function load() {
+  try {
+    const d = JSON.parse(localStorage.getItem(STORAGE_KEY));
+    if (!d) return;
+    counts = d.counts || {}; total = d.total || 0;
+    phraseHits = d.phraseHits || 0; logEntries = d.logEntries || [];
+    if (d.phrase != null) phraseInput.value = d.phrase;
+    if (d.alias != null) aliasInput.value = d.alias;
+    if (d.lang) langSelect.value = d.lang;
+  } catch (e) {}
+}
+[phraseInput, aliasInput, langSelect].forEach(el => el.addEventListener('input', save));
+
+// ---------- phrase matching ----------
+const norm = s => s.toLowerCase().replace(/[^\w\s']/g, '').replace(/\s+/g, ' ').trim();
+
+function getPhrases() {
+  return [phraseInput.value, ...aliasInput.value.split(',')]
+    .map(norm).filter(Boolean).map(p => p.split(' '));
+}
+function countPhrases(text) {
+  const words = norm(text).split(' ').filter(Boolean);
+  const phrases = getPhrases();
+  let hits = 0;
+  for (let i = 0; i < words.length; i++) {
+    for (const pw of phrases) {
+      if (pw.every((w, j) => words[i + j] === w)) { hits++; i += pw.length - 1; break; }
+    }
+  }
+  return hits;
+}
+
+// ---------- rendering ----------
+function render() {
+  $('totalWords').textContent = total;
+  $('uniqueWords').textContent = Object.keys(counts).length;
+  const sorted = Object.entries(counts).sort((a, b) => b[1] - a[1]).slice(0, 15);
+  const max = sorted.length ? sorted[0][1] : 1;
+  freqList.innerHTML = sorted.map(([w, c]) => `
+    <div class="freq-item">
+      <div class="w">${w}</div>
+      <div class="bar"><div class="fill" style="width:${(c / max) * 100}%"></div></div>
+      <div class="c">${c}</div>
+    </div>`).join('');
+}
+function renderLog() {
+  logList.innerHTML = '';
+  logEntries.forEach(e => {
+    const div = document.createElement('div');
+    div.textContent = `✅ Phrase completed${e.hits > 1 ? ' ×' + e.hits : ''} — total #${e.total} `;
+    const t = document.createElement('span');
+    t.className = 't'; t.textContent = e.time;
+    div.appendChild(t);
+    logList.appendChild(div);
+  });
+}
+
+// ---------- speech recognition ----------
+let recognition = null, shouldListen = false, wakeLock = null;
+
+function setIdleUI() {
+  micBtn.classList.remove('listening');
+  statusEl.textContent = 'Tap mic to start';
+}
+async function requestWakeLock() {
+  try { wakeLock = await navigator.wakeLock.request('screen'); } catch (e) {}
+}
+document.addEventListener('visibilitychange', () => {
+  if (document.visibilityState === 'visible' && shouldListen) requestWakeLock();
+});
+
+if (SR) {
+  recognition = new SR();
   recognition.continuous = true;
   recognition.interimResults = true;
-  recognition.lang = 'en-IN';   // better for Indian names; try 'hi-IN' too
-
-  let shouldListen = false;
-  let counts = {}, total = 0, phraseHits = 0;
-
-  const norm = s => s.toLowerCase().replace(/[^\w\s']/g, '').replace(/\s+/g, ' ').trim();
-
-  // All phrases that count (main + aliases)
-  function getPhrases() {
-    const list = [phraseInput.value, ...aliasInput.value.split(',')];
-    return list.map(norm).filter(Boolean).map(p => p.split(' '));
-  }
-
-  // Count completed phrase occurrences in spoken text (non-overlapping)
-  function countPhrases(text) {
-    const words = norm(text).split(' ').filter(Boolean);
-    const phrases = getPhrases();
-    let hits = 0;
-    for (let i = 0; i < words.length; i++) {
-      for (const pw of phrases) {
-        if (pw.every((w, j) => words[i + j] === w)) {
-          hits++;
-          i += pw.length - 1;   // skip past matched phrase
-          break;
-        }
-      }
-    }
-    return hits;
-  }
 
   micBtn.addEventListener('click', () => {
     shouldListen = !shouldListen;
     if (shouldListen) {
-      try { recognition.start(); } catch(e) {}
+      recognition.lang = langSelect.value;
+      try { recognition.start(); } catch (e) {}
+      requestWakeLock();
     } else {
       recognition.stop();
     }
@@ -161,19 +219,27 @@
     statusEl.textContent = '🔴 Listening... say the phrase!';
   };
 
-  // Auto-restart so you don't have to keep tapping
   recognition.onend = () => {
     if (shouldListen) {
-      try { recognition.start(); } catch(e) {}
+      setTimeout(() => { try { recognition.start(); } catch (e) {} }, 250);
     } else {
-      micBtn.classList.remove('listening');
-      statusEl.textContent = 'Tap mic to start';
+      setIdleUI();
+      if (wakeLock) { wakeLock.release().catch(() => {}); wakeLock = null; }
     }
   };
 
   recognition.onerror = (e) => {
-    statusEl.textContent = '⚠️ Error: ' + e.error;
-    if (e.error === 'not-allowed') shouldListen = false;
+    if (e.error === 'not-allowed' || e.error === 'service-not-allowed') {
+      shouldListen = false;
+      statusEl.innerHTML = '⛔ Mic blocked. Tap the 🔒 icon in the address bar → allow microphone.';
+    } else if (e.error === 'audio-capture') {
+      statusEl.textContent = '⚠️ No microphone found.';
+    } else if (e.error === 'no-speech') {
+      statusEl.textContent = '🔴 Listening... (no speech heard yet)';
+    } else if (e.error === 'network') {
+      statusEl.textContent = '⚠️ Speech recognition needs an internet connection.';
+    }
+    // 'aborted' etc. → ignore; onend handles restart
   };
 
   recognition.onresult = (event) => {
@@ -181,54 +247,59 @@
     for (let i = event.resultIndex; i < event.results.length; i++) {
       const text = event.results[i][0].transcript;
       if (event.results[i].isFinal) {
-        // count all words
         norm(text).split(' ').filter(Boolean).forEach(w => {
           counts[w] = (counts[w] || 0) + 1; total++;
         });
-        // count completed phrases
         const hits = countPhrases(text);
         if (hits > 0) {
           phraseHits += hits;
           bigNum.textContent = phraseHits;
           bigNum.classList.remove('pop'); void bigNum.offsetWidth; bigNum.classList.add('pop');
-          const time = new Date().toLocaleTimeString();
-          logList.insertAdjacentHTML('afterbegin',
-            `<div>✅ Phrase completed ${hits > 1 ? '×' + hits : ''} — total <b>#${phraseHits}</b><span class="t">${time}</span></div>`);
+          logEntries.unshift({ hits, total: phraseHits, time: new Date().toLocaleTimeString() });
+          if (logEntries.length > 50) logEntries.length = 50;
+          renderLog();
         }
         liveHint.textContent = '';
         transcriptEl.textContent = '“' + text.trim() + '”';
+        save();
       } else {
         interim += text;
       }
     }
-    // live preview while you're mid-phrase
     if (interim) {
       const live = countPhrases(interim);
       liveHint.textContent = live > 0 ? '👂 Heard it! finishing...' : '';
-      transcriptEl.innerHTML = '“' + interim.trim() + '” <span class="interim">…</span>';
+      transcriptEl.textContent = '“' + interim.trim() + '” ';
+      const dots = document.createElement('span');
+      dots.className = 'interim'; dots.textContent = '…';
+      transcriptEl.appendChild(dots);
     }
     render();
   };
+}
 
-  function render() {
-    document.getElementById('totalWords').textContent = total;
-    document.getElementById('uniqueWords').textContent = Object.keys(counts).length;
-    const sorted = Object.entries(counts).sort((a,b) => b[1]-a[1]).slice(0, 15);
-    const max = sorted.length ? sorted[0][1] : 1;
-    freqList.innerHTML = sorted.map(([w,c]) => `
-      <div class="freq-item">
-        <div class="w">${w}</div>
-        <div class="bar"><div class="fill" style="width:${(c/max)*100}%"></div></div>
-        <div class="c">${c}</div>
-      </div>`).join('');
-  }
+// ---------- reset ----------
+resetBtn.addEventListener('click', () => {
+  if (!confirm('Reset all counters and history?')) return;
+  counts = {}; total = 0; phraseHits = 0; logEntries = [];
+  bigNum.textContent = '0'; liveHint.textContent = '';
+  logList.innerHTML = '';
+  transcriptEl.textContent = 'Your speech will appear here...';
+  render(); save();
+});
 
-  document.getElementById('resetBtn').addEventListener('click', () => {
-    counts = {}; total = 0; phraseHits = 0;
-    bigNum.textContent = '0'; logList.innerHTML = ''; freqList.innerHTML = '';
-    transcriptEl.textContent = 'Your speech will appear here...';
-    render();
-  });
+// ---------- init ----------
+load();
+bigNum.textContent = phraseHits;
+render(); renderLog();
+
+if (!window.isSecureContext) {
+  statusEl.innerHTML = '🔒 Mic needs <b>HTTPS</b> — open via your github.io link, not as a local file.';
+}
+if (!SR) {
+  micBtn.disabled = true;
+  statusEl.textContent = '❌ Speech recognition not supported. Use Chrome (desktop or Android).';
+}
 </script>
 </body>
 </html>
