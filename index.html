@@ -1,0 +1,312 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1" />
+<title>Voice Japa Counter</title>
+<style>
+  :root{--bg:#0f1220;--card:#181c2f;--accent:#ffb43a;--text:#eef0ff;--dim:#9aa0c0}
+  *{box-sizing:border-box;margin:0;padding:0;font-family:system-ui,sans-serif}
+  body{background:var(--bg);color:var(--text);display:flex;justify-content:center;padding:16px}
+  .app{width:100%;max-width:420px;display:flex;flex-direction:column;gap:14px}
+  h1{font-size:1.15rem;text-align:center}
+  .count-card{background:var(--card);border-radius:18px;padding:22px;text-align:center}
+  #count{font-size:4.5rem;font-weight:800;color:var(--accent);display:inline-block;transition:transform .15s}
+  #count.pop{transform:scale(1.25)}
+  #target{color:var(--dim);font-size:.9rem;margin-top:4px}
+  #status{font-size:.85rem;margin-top:8px;color:var(--dim)}
+  #status.on{color:#4ade80}
+  #pending{color:#fbbf24;font-size:.85rem;margin-top:6px;min-height:1.2em}
+  #micBtn{width:100%;padding:16px;font-size:1.1rem;font-weight:700;border:none;border-radius:14px;
+          background:var(--accent);color:#1a1a1a;cursor:pointer}
+  #micBtn.stop{background:#ef4444;color:#fff}
+  .transcript{background:var(--card);border-radius:14px;padding:12px;min-height:56px;font-size:.9rem}
+  #interimText{color:var(--dim);font-style:italic}
+  .row{display:flex;gap:8px}
+  .row button{flex:1;padding:12px;border:none;border-radius:12px;background:var(--card);color:var(--text);cursor:pointer}
+  details{background:var(--card);border-radius:14px;padding:12px}
+  summary{cursor:pointer;font-weight:600}
+  .field{display:flex;flex-direction:column;gap:4px;margin-top:10px;font-size:.85rem;color:var(--dim)}
+  .field input,.field select{padding:10px;border-radius:10px;border:1px solid #2c3152;background:#0f1220;color:var(--text);font-size:1rem}
+  .check{display:flex;gap:8px;align-items:center;margin-top:10px;font-size:.85rem;color:var(--dim)}
+  #toast{position:fixed;bottom:20px;left:50%;transform:translateX(-50%);background:#ef4444;color:#fff;
+         padding:10px 16px;border-radius:10px;font-size:.85rem;display:none;max-width:90%;text-align:center}
+  .tips{font-size:.75rem;color:var(--dim);line-height:1.5}
+</style>
+</head>
+<body>
+<div class="app">
+  <h1>🙏 Voice Japa Counter</h1>
+
+  <div class="count-card">
+    <span id="count">0</span>
+    <div id="target"></div>
+    <div id="status">○ Stopped</div>
+    <div id="pending"></div>
+  </div>
+
+  <button id="micBtn">🎤 Start Listening</button>
+
+  <div class="transcript">
+    <div id="finalText"></div>
+    <div id="interimText"></div>
+  </div>
+
+  <div class="row">
+    <button id="undoBtn">↩ Undo</button>
+    <button id="plusBtn">＋1 manual</button>
+    <button id="resetBtn">Reset</button>
+  </div>
+
+  <details>
+    <summary>⚙ Settings</summary>
+    <label class="field">Mantra / phrase
+      <input type="text" id="mantraInput" value="Shree Sita Ram">
+    </label>
+    <label class="field">Recognition language
+      <select id="langSelect">
+        <option value="hi-IN">हिन्दी (hi-IN)</option>
+        <option value="en-IN">English India (en-IN)</option>
+        <option value="mr-IN">मराठी</option>
+        <option value="bn-IN">বাংলা</option>
+        <option value="gu-IN">ગુજરાતી</option>
+        <option value="ta-IN">தமிழ்</option>
+        <option value="te-IN">తెలుగు</option>
+      </select>
+    </label>
+    <label class="field">Daily target (optional, e.g. 108)
+      <input type="number" id="targetInput" value="108">
+    </label>
+    <label class="check"><input type="checkbox" id="confirmMode">
+      Confirm mode: count only after I say "done" / "हो गया"</label>
+    <label class="check"><input type="checkbox" id="soundOn" checked> Beep + vibrate on each count</label>
+  </details>
+
+  <p class="tips">Use Chrome. Allow mic once — it won't ask again. Keep this screen open;
+  screen stays awake and the counter saves automatically. A steady mic icon while
+  listening is normal (privacy indicator) — it should NOT flicker on/off.</p>
+
+  <div id="toast"></div>
+</div>
+
+<script>
+'use strict';
+const $ = id => document.getElementById(id);
+
+/* ---------------- state ---------------- */
+let count = parseInt(localStorage.getItem('jc_count') || '0', 10);
+let listening = false, recognition = null, restartTimer = null, wakeLock = null;
+let countedInUtterance = 0;  // chants already counted in current spoken sentence
+let pendingCommit = 0;       // confirm mode: heard but waiting for "done"
+let mantraGroups = [], mantraCollapsed = [];
+
+/* ---------------- fuzzy mantra matching ---------------- */
+const HONORIFICS = new Set(['om','aum','shree','shri','sri','jai','jaya','hey','हे','श्री','जय','ॐ']);
+const SPELLINGS = { // each core word matches several recognitions/transliterations
+  sita:['sita','seeta','सीता'],  ram:['ram','raam','rama','राम'],
+  radhe:['radhe','radha','राधे','राधा'], krishna:['krishna','krishn','कृष्ण'],
+  hare:['hare','हरे'], govind:['govind','govinda','गोविंद','गोविन्द'],
+  gopal:['gopal','गोपाल'], hari:['hari','हरि'],
+  hanuman:['hanuman','हनुमान','हनुमंत'], shiv:['shiv','shiva','शिव'],
+  shankar:['shankar','शंकर'], mahadev:['mahadev','महादेव'],
+  durga:['durga','दुर्गा'], mata:['mata','ma','माँ','मां','मा'],
+  lakshmi:['lakshmi','laxmi','लक्ष्मी'], ganesh:['ganesh','ganesha','गणेश'],
+  narayan:['narayan','नारायण'], vishnu:['vishnu','विष्णु'],
+  saraswati:['saraswati','सरस्वती'], bhole:['bhole','भोले'],
+  ambe:['ambe','अंबे'], kali:['kali','काली'], gayatri:['gayatri','गायत्री'],
+  sai:['sai','साईं','साई']
+};
+const CONFIRM = ['done','hoga','ho','gaya','gayo','ok','okay','yes','haan','next','काउंट','हो','गया','हो','गयो','हाँ','हां'];
+
+function normalize(t){
+  return t.toLowerCase().replace(/[।,!?.;:"'()\-–—]/g,' ').replace(/\s+/g,' ').trim();
+}
+function groupFor(w){ return SPELLINGS[w] || [w]; }
+
+function rebuildMantra(){
+  const words = normalize($('mantraInput').value).split(' ').filter(Boolean);
+  let core = words.filter(w => !HONORIFICS.has(w));
+  if (!core.length) core = words;
+  mantraGroups = core.map(groupFor);
+  mantraCollapsed = new Set([core.join(''), words.join('')]); // handles "sitaram" spoken as one word
+}
+
+function occurrencesIn(text){
+  if (!mantraGroups.length) return 0;
+  const tokens = normalize(text).split(' ').filter(Boolean);
+  let n = Math.min(...mantraGroups.map(g =>
+    tokens.reduce((a,t) => a + (g.includes(t) ? 1 : 0), 0)));
+  const flat = normalize(text).replace(/ /g,'');
+  for (const c of mantraCollapsed){
+    if (c.length < 4) continue;
+    let cnt = 0, idx = 0;
+    while ((idx = flat.indexOf(c, idx)) !== -1){ cnt++; idx += c.length; }
+    n = Math.max(n, cnt);
+  }
+  return n;
+}
+function isConfirm(text){
+  return normalize(text).split(' ').some(t => CONFIRM.includes(t));
+}
+
+/* ---------------- speech recognition ---------------- */
+function ensureRecognition(){
+  const SR = window.SpeechRecognition || window.webkitSpeechRecognition;
+  if (!SR) return null;
+  if (recognition) return recognition;
+
+  recognition = new SR();
+  recognition.continuous = true;      // FIX: mic stays on across phrases
+  recognition.interimResults = true;  // FIX: live text -> count instantly
+  recognition.lang = $('langSelect').value;
+
+  recognition.onresult = (e) => {
+    let interim = '';
+    for (let i = e.resultIndex; i < e.results.length; i++){
+      const r = e.results[i];
+      if (r.isFinal) handleSpeech(r[0].transcript, true);
+      else interim += r[0].transcript + ' ';
+    }
+    if (interim.trim()){ handleSpeech(interim, false); $('interimText').textContent = interim; }
+  };
+
+  recognition.onend = () => {         // FIX: auto restart, no re-prompt, no flicker
+    if (listening) restartTimer = setTimeout(() => {
+      try { recognition.start(); } catch(_){}
+    }, 400);
+  };
+
+  recognition.onerror = (e) => {
+    if (e.error === 'not-allowed' || e.error === 'service-not-allowed'){
+      listening = false; updateUI();
+      toast('Mic blocked. Allow mic for this site in browser settings, then press Start.');
+    } else if (e.error === 'network') toast('Speech service needs internet — retrying…');
+    else if (e.error === 'audio-capture'){ listening = false; updateUI(); toast('No microphone found.'); }
+    /* 'no-speech' & 'aborted' -> onend restarts automatically */
+  };
+  return recognition;
+}
+
+/* ---------------- THE COUNTER (listens like a human) ---------------- */
+function handleSpeech(text, isFinal){
+  const found = occurrencesIn(text);
+  const fresh = Math.max(0, found - countedInUtterance);
+  if (fresh > 0) countedInUtterance = found;
+
+  if ($('confirmMode').checked){
+    if (fresh > 0) pendingCommit += fresh;
+    if (pendingCommit > 0 && isConfirm(text)){ addCount(pendingCommit); pendingCommit = 0; }
+    $('pending').textContent = pendingCommit ? `⏳ ${pendingCommit} detected — say "done" / "हो गया"` : '';
+  } else {
+    if (fresh > 0) addCount(fresh);   // chant completed -> +1 immediately
+  }
+
+  if (isFinal){
+    countedInUtterance = 0;           // ready for the next chant
+    $('finalText').textContent = '“' + text.trim() + '”';
+    $('interimText').textContent = '';
+  }
+}
+
+/* ---------------- count / feedback ---------------- */
+function addCount(n){
+  count += n;
+  localStorage.setItem('jc_count', count);
+  $('count').textContent = count;
+  $('count').classList.remove('pop'); void $('count').offsetWidth; $('count').classList.add('pop');
+  feedback(); updateTargetLine();
+}
+function feedback(){
+  if (!$('soundOn').checked) return;
+  if (navigator.vibrate) navigator.vibrate(40);
+  try{
+    feedback.ctx = feedback.ctx || new (window.AudioContext || window.webkitAudioContext)();
+    const o = feedback.ctx.createOscillator(), g = feedback.ctx.createGain();
+    o.frequency.value = 880; o.type = 'sine';
+    g.gain.setValueAtTime(0.12, feedback.ctx.currentTime);
+    g.gain.exponentialRampToValueAtTime(0.001, feedback.ctx.currentTime + 0.12);
+    o.connect(g).connect(feedback.ctx.destination); o.start(); o.stop(feedback.ctx.currentTime + 0.12);
+  } catch(_){}
+}
+
+/* ---------------- start / stop ---------------- */
+async function startListening(){
+  rebuildMantra();
+  if (!mantraGroups.length){ toast('Please enter a mantra first.'); return; }
+  const rec = ensureRecognition();
+  if (!rec){ toast('Speech recognition not supported. Use Chrome or Edge.'); return; }
+  rec.lang = $('langSelect').value;
+  listening = true; updateUI(); saveSettings();
+  try { rec.start(); } catch(_){}
+  try { wakeLock = await navigator.wakeLock.request('screen'); } catch(_){} // screen won't sleep
+}
+function stopListening(){
+  listening = false;
+  clearTimeout(restartTimer);
+  try { recognition && recognition.stop(); } catch(_){}
+  try { wakeLock && wakeLock.release(); } catch(_){}
+  wakeLock = null; updateUI();
+}
+function restartRecognition(){ // used when language changes mid-session
+  if (!listening) return;
+  clearTimeout(restartTimer);
+  try { recognition.stop(); } catch(_){}
+  restartTimer = setTimeout(() => {
+    if (!listening) return;
+    recognition.lang = $('langSelect').value;
+    try { recognition.start(); } catch(_){}
+  }, 600);
+}
+
+/* ---------------- UI helpers ---------------- */
+function updateUI(){
+  $('count').textContent = count;
+  $('micBtn').textContent = listening ? '⏹ Stop Listening' : '🎤 Start Listening';
+  $('micBtn').classList.toggle('stop', listening);
+  $('status').textContent = listening ? '● Listening — chant now' : '○ Stopped';
+  $('status').classList.toggle('on', listening);
+  updateTargetLine();
+}
+function updateTargetLine(){
+  const t = parseInt($('targetInput').value, 10);
+  $('target').textContent = (t > 0) ? `Round ${Math.floor(count/t)+1} • ${count % t}/${t}` : '';
+}
+function saveSettings(){
+  localStorage.setItem('jc_mantra', $('mantraInput').value);
+  localStorage.setItem('jc_lang', $('langSelect').value);
+  localStorage.setItem('jc_confirm', $('confirmMode').checked ? '1' : '0');
+  localStorage.setItem('jc_target', $('targetInput').value);
+}
+function loadSettings(){
+  $('mantraInput').value = localStorage.getItem('jc_mantra') || 'Shree Sita Ram';
+  $('langSelect').value  = localStorage.getItem('jc_lang') || 'hi-IN';
+  $('confirmMode').checked = localStorage.getItem('jc_confirm') === '1';
+  $('targetInput').value = localStorage.getItem('jc_target') || '108';
+  rebuildMantra();
+}
+let toastTimer;
+function toast(msg){
+  const t = $('toast'); t.textContent = msg; t.style.display = 'block';
+  clearTimeout(toastTimer); toastTimer = setTimeout(() => t.style.display = 'none', 4000);
+}
+
+/* ---------------- events ---------------- */
+ $('micBtn').onclick   = () => listening ? stopListening() : startListening();
+ $('undoBtn').onclick  = () => { if (count > 0){ count--; localStorage.setItem('jc_count', count); updateUI(); } };
+ $('plusBtn').onclick  = () => addCount(1);
+ $('resetBtn').onclick = () => { count = 0; localStorage.setItem('jc_count', 0); updateUI(); };
+ $('mantraInput').oninput   = () => { rebuildMantra(); saveSettings(); };
+ $('langSelect').onchange   = () => { saveSettings(); if (listening) restartRecognition(); };
+ $('targetInput').oninput   = () => { saveSettings(); updateTargetLine(); };
+ $('confirmMode').onchange  = () => { saveSettings(); pendingCommit = 0; $('pending').textContent = ''; };
+document.addEventListener('visibilitychange', async () => {
+  if (!document.hidden && listening && 'wakeLock' in navigator){
+    try { wakeLock = await navigator.wakeLock.request('screen'); } catch(_){}
+  }
+});
+
+loadSettings();
+updateUI();
+</script>
+</body>
+</html>
