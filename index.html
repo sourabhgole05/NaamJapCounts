@@ -2,505 +2,1007 @@
 <html lang="en">
 <head>
 <meta charset="UTF-8">
-<meta name="viewport" content="width=device-width, initial-scale=1.0">
-<title>Naam Jap Counter</title>
+<meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover">
+<title>Japa — Voice Chant Counter</title>
+<link rel="icon" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 32 32'%3E%3Ccircle cx='16' cy='16' r='10' fill='%23E9A13B'/%3E%3C/svg%3E">
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Fraunces:ital,opsz,wght@0,9..144,300..700;1,9..144,300..600&family=Instrument+Sans:ital,wght@0,400..700;1,400&display=swap" rel="stylesheet">
+<script src="https://cdn.jsdelivr.net/npm/lucide@0.462.0/dist/umd/lucide.min.js"></script>
 <style>
   :root{
-    --bg: #241417;
-    --bg-2: #2f1a1d;
-    --card: #33191c;
-    --gold: #d9a441;
-    --gold-soft: #b98a3d;
-    --cream: #f2e8d8;
-    --cream-dim: #cbb99f;
-    --ember: #c65b3c;
-    --line: #4a2a2c;
+    --bg:#161210; --panel:#211A15; --panel2:#181210;
+    --line:#3A2E23; --line-soft:#2C231B;
+    --text:#F3E8D6; --muted:#A6906F; --faint:#6E5D48;
+    --saffron:#E9A13B; --saffron-hi:#F2B054; --terracotta:#C4553B;
   }
-  *{box-sizing:border-box;}
-  html,body{height:100%;}
+  *{margin:0;padding:0;box-sizing:border-box}
+  html,body{height:100%}
   body{
-    margin:0;
-    min-height:100vh;
-    background:
-      radial-gradient(ellipse at top, var(--bg-2) 0%, var(--bg) 55%);
-    color:var(--cream);
-    font-family: 'Iowan Old Style','Palatino Linotype',Georgia,serif;
-    display:flex;
-    align-items:center;
-    justify-content:center;
-    padding:24px;
+    background:var(--bg); color:var(--text);
+    font-family:'Instrument Sans',sans-serif;
+    display:flex; flex-direction:column;
+    height:100dvh; overflow:hidden;
+    -webkit-tap-highlight-color:transparent;
   }
+  body::before{ /* subtle depth vignette */
+    content:''; position:fixed; inset:0; pointer-events:none; z-index:0;
+    background:radial-gradient(120% 95% at 50% 36%, transparent 52%, rgba(7,4,2,.5) 100%);
+  }
+  .grain{
+    position:fixed; inset:0; pointer-events:none; z-index:1; opacity:.05;
+    background-image:url("data:image/svg+xml;utf8,%3Csvg xmlns='http://www.w3.org/2000/svg' width='160' height='160'%3E%3Cfilter id='n'%3E%3CfeTurbulence type='fractalNoise' baseFrequency='0.85' numOctaves='2' stitchTiles='stitch'/%3E%3C/filter%3E%3Crect width='160' height='160' filter='url(%23n)' opacity='0.55'/%3E%3C/svg%3E");
+  }
+  .flash{position:fixed;inset:0;background:#F2C063;opacity:0;pointer-events:none;z-index:5}
+  .flash.go{animation:flash 1.3s ease-out}
+  @keyframes flash{0%{opacity:0}12%{opacity:.07}100%{opacity:0}}
+  ::selection{background:rgba(233,161,61,.25)}
+  :focus-visible{outline:2px solid var(--saffron);outline-offset:2px}
+  button{font-family:inherit;touch-action:manipulation}
+  svg.lucide{display:inline-block;vertical-align:middle}
 
-  .app{
-    width:100%;
-    max-width:420px;
+  /* ---------- header ---------- */
+  header{
+    position:relative;z-index:2; display:flex;align-items:center;justify-content:space-between;
+    padding:18px 26px; flex:none;
   }
+  .wordmark{display:flex;align-items:baseline;gap:11px}
+  .wordmark .lucide{width:17px;height:17px;color:var(--saffron);align-self:center}
+  .wordmark b{font:600 15px 'Fraunces';letter-spacing:.42em;color:var(--text)}
+  .wordmark em{font:400 10px 'Instrument Sans';text-transform:uppercase;letter-spacing:.24em;color:var(--faint);font-style:normal}
+  .top-actions{display:flex;align-items:center;gap:10px}
+  .seg{display:flex;border:1px solid var(--line);border-radius:999px;padding:3px;gap:2px}
+  .seg-btn{border:0;background:transparent;color:var(--muted);padding:7px 13px;border-radius:999px;
+    display:flex;gap:7px;align-items:center;font:600 12.5px 'Instrument Sans';cursor:pointer;transition:.18s}
+  .seg-btn .lucide{width:14px;height:14px}
+  .seg-btn.active{background:#2B2118;color:var(--saffron)}
+  .seg-btn:disabled{opacity:.35;cursor:not-allowed}
+  .icon-btn{width:36px;height:36px;border-radius:50%;border:1px solid var(--line);background:transparent;
+    color:var(--muted);display:grid;place-items:center;cursor:pointer;transition:.18s}
+  .icon-btn:hover{color:var(--text);border-color:var(--faint)}
+  .icon-btn .lucide{width:16px;height:16px}
 
-  .eyebrow{
-    text-align:center;
-    color:var(--cream-dim);
-    font-size:14px;
-    letter-spacing:0.02em;
-    margin-bottom:6px;
+  /* ---------- main ---------- */
+  main{
+    position:relative;z-index:2;flex:1; display:flex;flex-direction:column;align-items:center;
+    justify-content:center; gap:10px; padding:0 20px 16px; min-height:0;
   }
+  .ring-wrap{position:relative; width:min(70vmin,52vh,520px); aspect-ratio:1; flex:none}
+  .halo{position:absolute; inset:20%; border-radius:50%; background:var(--saffron);
+    opacity:.05; filter:blur(56px); pointer-events:none; animation:breathe 7s ease-in-out infinite}
+  @keyframes breathe{0%,100%{transform:scale(.96);opacity:.05}50%{transform:scale(1.05);opacity:.1}}
+  .halo.blaze{animation:blaze 1.4s ease-out}
+  @keyframes blaze{0%{opacity:.05}20%{opacity:.34;transform:scale(1.12)}100%{opacity:.05;transform:scale(.96)}}
+  #ringSvg{display:block;width:100%;height:auto;position:relative}
+  .level-arc{stroke:rgba(233,161,61,.5);stroke-width:2.5;fill:none;stroke-linecap:round;transition:opacity .4s}
+  .bead{fill:#241C15;stroke:#46372A;stroke-width:1;transform-box:fill-box;transform-origin:center;
+    transition:fill .6s,stroke .6s}
+  .bead.lit{fill:var(--saffron);stroke:#F0BE72;filter:drop-shadow(0 0 4px rgba(233,161,61,.55));transition:fill .1s,stroke .1s}
+  .bead.fresh{animation:beadpop .45s ease-out}
+  @keyframes beadpop{0%{transform:scale(1)}40%{transform:scale(2)}100%{transform:scale(1)}}
+  .bead.flare{fill:#FFD98A;filter:drop-shadow(0 0 10px rgba(255,200,100,.9))}
+  .guru{fill:#3A2C1D;stroke:#6E5636;stroke-width:1.2;transform-box:fill-box;transform-origin:center;transition:fill .6s}
+  .guru.flare{fill:var(--saffron);filter:drop-shadow(0 0 10px rgba(255,200,100,.9))}
+  .ripple-c{fill:none;stroke:rgba(233,161,61,.5);stroke-width:2;transform-box:fill-box;transform-origin:center;animation:rip .7s ease-out forwards}
+  @keyframes rip{from{transform:scale(.35);opacity:.8}to{transform:scale(3.2);opacity:0}}
 
-  h1{
-    text-align:center;
-    font-size:26px;
-    font-weight:500;
-    margin:0 0 28px;
-    color:var(--cream);
-  }
+  .counter{position:absolute;inset:0;display:flex;flex-direction:column;align-items:center;justify-content:center;
+    gap:8px;text-align:center;cursor:pointer;user-select:none;-webkit-user-select:none}
+  .num{font-family:'Fraunces';font-optical-sizing:auto;font-weight:450;line-height:1;
+    font-size:clamp(72px,15vmin,150px);font-variant-numeric:tabular-nums;color:var(--text);transition:color .6s}
+  .num:hover{color:#FFF6E8}
+  .num.pop{animation:pop .32s cubic-bezier(.2,.8,.3,1)}
+  @keyframes pop{0%{transform:scale(1)}30%{transform:scale(1.06)}100%{transform:scale(1)}}
+  .num.gold{color:var(--saffron)}
+  .sub{font:600 10.5px 'Instrument Sans';text-transform:uppercase;letter-spacing:.2em;color:var(--faint)}
 
-  .mala{
-    position:relative;
-    width:280px;
-    height:280px;
-    margin:0 auto 20px;
-    display:flex;
-    align-items:center;
-    justify-content:center;
-  }
+  .mantra-line{font-family:'Fraunces';font-style:italic;font-weight:420;
+    font-size:clamp(17px,2.6vmin,23px);color:#EAD1A8;text-align:center;max-width:80%}
+  .status-row{display:flex;align-items:center;gap:9px;font-size:13px;color:var(--muted);min-height:20px}
+  .dot{width:8px;height:8px;border-radius:50%;background:var(--faint);flex:none;transition:background .3s}
+  .dot.live{background:var(--saffron);animation:dotpulse 2s ease-in-out infinite}
+  .dot.err{background:var(--terracotta)}
+  @keyframes dotpulse{0%,100%{opacity:.35}50%{opacity:1}}
+  #statusText.hi{color:var(--saffron)}
+  .heard{display:inline-flex;align-items:center;gap:6px;opacity:0;transform:translateY(4px);transition:.25s}
+  .heard.show{opacity:1;transform:none}
+  .heard .lucide{width:13px;height:13px;color:var(--saffron)}
+  .heard em{font:italic 400 12.5px 'Fraunces';color:var(--muted);max-width:220px;overflow:hidden;
+    text-overflow:ellipsis;white-space:nowrap}
+  .heard.soft .lucide{display:none}
+  .heard.soft em{color:var(--faint)}
 
-  .mala svg{position:absolute; inset:0; width:100%; height:100%;}
+  .controls{display:flex;flex-direction:column;align-items:center;gap:9px}
+  .pause-btn{display:inline-flex;align-items:center;gap:10px;background:var(--saffron);color:#231708;border:0;
+    padding:12px 26px;border-radius:999px;font:600 14px 'Instrument Sans';letter-spacing:.03em;cursor:pointer;transition:.2s}
+  .pause-btn:hover{background:var(--saffron-hi);transform:translateY(-1px)}
+  .pause-btn .lucide{width:15px;height:15px}
+  .hint{font-size:11.5px;color:var(--faint)}
+  kbd{border:1px solid var(--line);border-bottom-width:2px;border-radius:5px;padding:1px 6px;font:600 10px 'Instrument Sans';color:var(--muted)}
 
-  .count-core{
-    position:relative;
-    z-index:2;
-    text-align:center;
-  }
+  .footer{display:flex;flex-direction:column;align-items:center;gap:7px;margin-top:2px}
+  .stats{display:flex;align-items:center;gap:9px;font-size:12.5px;color:var(--muted);font-variant-numeric:tabular-nums}
+  .stats i{font-style:normal;color:var(--line)}
+  .linklike{background:none;border:0;color:var(--faint);font:inherit;font-size:12.5px;cursor:pointer;
+    text-decoration:underline;text-underline-offset:3px;padding:0}
+  .linklike:hover{color:var(--terracotta)}
+  .linklike.warn{color:var(--terracotta)}
+  .tally{display:flex;gap:7px;align-items:center;justify-content:center;min-height:15px}
+  .tally .lucide{width:12px;height:12px;color:var(--saffron);opacity:.75}
+  .tally .tx{font:600 11px 'Instrument Sans';color:var(--muted)}
 
-  .count{
-    font-size:64px;
-    font-weight:600;
-    line-height:1;
-    color:var(--gold);
-    font-variant-numeric: tabular-nums;
-  }
+  /* ---------- setup overlay ---------- */
+  .overlay{position:fixed;inset:0;z-index:70;display:grid;place-items:center;padding:18px;
+    background:rgba(12,9,7,.72);backdrop-filter:blur(7px);-webkit-backdrop-filter:blur(7px);
+    opacity:0;pointer-events:none;transition:opacity .35s}
+  .overlay.open{opacity:1;pointer-events:auto}
+  .panel{width:min(520px,100%);background:var(--panel);border:1px solid var(--line);border-radius:20px;
+    padding:30px 34px 30px;box-shadow:0 30px 80px rgba(0,0,0,.5);
+    transform:translateY(14px);transition:transform .35s cubic-bezier(.3,.8,.3,1);max-height:92dvh;overflow:auto}
+  .overlay.open .panel{transform:none}
+  .steps{display:flex;align-items:center;justify-content:center;margin-bottom:26px}
+  .sdot{display:flex;flex-direction:column;align-items:center;gap:6px}
+  .sdot span{width:10px;height:10px;border-radius:50%;border:1.5px solid var(--faint);transition:.3s}
+  .sdot.active span{border-color:var(--saffron);background:var(--saffron)}
+  .sdot.done span{border-color:var(--saffron)}
+  .sdot label{font:600 9.5px 'Instrument Sans';text-transform:uppercase;letter-spacing:.18em;color:var(--faint)}
+  .sline{width:46px;height:1px;background:var(--line);margin:0 10px 15px}
+  .fstep h2{font:450 27px 'Fraunces';margin-bottom:8px}
+  .lead{font-size:14px;line-height:1.55;color:var(--muted)}
+  .lead em{font:italic 420 1.05em 'Fraunces';color:var(--saffron)}
+  input[type=text]{width:100%;background:var(--panel2);border:1px solid var(--line);border-radius:12px;
+    padding:14px 16px;color:var(--text);font:italic 400 17px 'Fraunces';outline:none;transition:border .2s;margin-top:18px}
+  input[type=text]:focus{border-color:var(--saffron)}
+  input[type=text]::placeholder{color:var(--faint)}
+  .suggest{display:flex;flex-wrap:wrap;gap:8px;margin-top:14px}
+  .chip{border:1px solid var(--line-soft);background:transparent;color:var(--muted);border-radius:999px;
+    padding:7px 13px;font:400 12.5px 'Instrument Sans';cursor:pointer;transition:.18s}
+  .chip:hover{border-color:var(--saffron);color:var(--saffron)}
+  .frow{display:flex;justify-content:flex-end;gap:10px;margin-top:24px;align-items:center}
+  .btn{display:inline-flex;align-items:center;gap:8px;border-radius:999px;padding:12px 22px;
+    font:600 13.5px 'Instrument Sans';cursor:pointer;transition:.2s;border:1px solid transparent}
+  .btn .lucide{width:15px;height:15px}
+  .btn.primary{background:var(--saffron);color:#231708}
+  .btn.primary:hover:not(:disabled){background:var(--saffron-hi)}
+  .btn.primary:disabled{background:#3A2E23;color:var(--faint);cursor:not-allowed}
+  .btn.ghost{background:transparent;border-color:var(--line);color:var(--muted)}
+  .btn.ghost:hover{color:var(--text);border-color:var(--faint)}
+  .btn.sm{padding:7px 14px;font-size:12px}
+  .cal-slots{display:flex;flex-direction:column;gap:11px;margin:22px 0 4px}
+  .cal-slot{display:flex;align-items:center;gap:12px;opacity:.4;transition:.3s}
+  .cal-slot.armed{opacity:.85}
+  .cal-slot.done{opacity:1}
+  .cs-dot{width:22px;height:22px;border-radius:50%;border:1.5px solid var(--faint);display:grid;place-items:center;
+    font:600 11px 'Instrument Sans';color:var(--muted);flex:none;transition:.3s}
+  .cal-slot.done .cs-dot{background:var(--saffron);border-color:var(--saffron);color:#231708}
+  .cs-track{flex:1;height:6px;border-radius:3px;background:#241C15;overflow:hidden}
+  .cs-bar{height:100%;width:0;background:var(--saffron);border-radius:3px;transition:width .4s ease}
+  .cs-meta{width:118px;font:400 11.5px 'Instrument Sans';color:var(--faint);white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+  .cal-result{display:flex;align-items:center;gap:10px;margin-top:16px;color:var(--saffron);
+    font:italic 400 14.5px 'Fraunces';min-height:20px}
+  .cal-result.err{color:var(--terracotta)}
+  .cal-result .lucide{width:16px;height:16px;flex:none}
+  .ready-mantra{font:italic 420 24px 'Fraunces';color:#EAD1A8;text-align:center;margin:18px 0 10px}
+  .tip{display:flex;gap:9px;align-items:flex-start;margin-top:16px;font-size:12.5px;color:var(--faint);line-height:1.5}
+  .tip .lucide{width:14px;height:14px;flex:none;margin-top:2px;color:var(--faint)}
 
-  .count-label{
-    font-size:13px;
-    color:var(--cream-dim);
-    margin-top:6px;
-  }
+  /* ---------- drawer ---------- */
+  .drawer{position:fixed;top:0;right:0;bottom:0;width:min(360px,92vw);background:var(--panel);
+    border-left:1px solid var(--line);transform:translateX(103%);transition:transform .35s cubic-bezier(.3,.8,.3,1);
+    z-index:60;padding:20px 24px;overflow:auto}
+  .drawer.open{transform:none}
+  .drawer-head{display:flex;justify-content:space-between;align-items:center;margin-bottom:6px}
+  .drawer-head span{font:450 20px 'Fraunces'}
+  .dsec{padding:18px 0;border-bottom:1px solid var(--line-soft)}
+  .dsec>label{display:block;font:600 10.5px 'Instrument Sans';text-transform:uppercase;letter-spacing:.2em;color:var(--faint);margin-bottom:12px}
+  .mantra-row{display:flex;justify-content:space-between;align-items:center;gap:10px}
+  .mantra-row em{font:italic 420 17px 'Fraunces';color:#EAD1A8;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+  select{width:100%;background:var(--panel2);border:1px solid var(--line);color:var(--text);
+    border-radius:10px;padding:10px 12px;font:400 13px 'Instrument Sans';outline:none}
+  input[type=range]{width:100%;accent-color:var(--saffron)}
+  .range-marks{display:flex;justify-content:space-between;font-size:10.5px;color:var(--faint);margin-top:4px}
+  .lifetime{font:450 30px 'Fraunces';font-variant-numeric:tabular-nums;margin-bottom:10px}
+  .dnote{font-size:11.5px;color:var(--faint);margin-top:8px;line-height:1.5}
 
-  .mala-progress{
-    font-size:12px;
-    color:var(--cream-dim);
-    text-align:center;
-    margin-bottom:24px;
-  }
+  /* ---------- toasts ---------- */
+  .toasts{position:fixed;bottom:22px;left:50%;transform:translateX(-50%);display:flex;flex-direction:column;
+    gap:8px;z-index:80;align-items:center;pointer-events:none}
+  .toast{display:flex;gap:9px;align-items:center;background:#241C15;border:1px solid var(--line);color:var(--text);
+    padding:10px 16px;border-radius:12px;font:400 13px 'Instrument Sans';box-shadow:0 10px 30px rgba(0,0,0,.4);
+    animation:toastin .3s ease;white-space:nowrap}
+  .toast .lucide{width:15px;height:15px;color:var(--saffron);flex:none}
+  @keyframes toastin{from{opacity:0;transform:translateY(8px)}to{opacity:1;transform:none}}
 
-  .word-row{
-    display:flex;
-    align-items:center;
-    justify-content:center;
-    gap:8px;
-    margin-bottom:24px;
-    color:var(--cream-dim);
-    font-size:14px;
+  @media (hover:none){ .kbd-only{display:none} }
+  @media (max-width:560px){
+    header{padding:14px 16px}
+    .seg-btn span,.wordmark em{display:none}
+    .wordmark b{letter-spacing:.3em}
+    .ring-wrap{width:min(84vmin,46vh)}
+    body{overflow:auto;height:auto;min-height:100dvh}
+    main{padding-bottom:26px}
+    .panel{padding:24px 22px}
   }
-
-  .word-row input{
-    background:transparent;
-    border:none;
-    border-bottom:1px solid var(--gold-soft);
-    color:var(--gold);
-    font-family:inherit;
-    font-size:16px;
-    text-align:center;
-    width:110px;
-    padding:2px 4px;
-  }
-  .word-row input:focus{outline:none; border-bottom-color:var(--gold);}
-
-  .controls{
-    display:flex;
-    gap:12px;
-    justify-content:center;
-    margin-bottom:20px;
-  }
-
-  button{
-    font-family:inherit;
-    font-size:15px;
-    padding:12px 22px;
-    border-radius:999px;
-    border:1px solid var(--gold-soft);
-    background:transparent;
-    color:var(--cream);
-    cursor:pointer;
-    transition: background 0.15s ease, color 0.15s ease, transform 0.1s ease;
-  }
-  button:active{transform:scale(0.97);}
-
-  #toggleBtn{
-    background:var(--gold);
-    color:#241417;
-    border-color:var(--gold);
-    font-weight:600;
-    min-width:140px;
-  }
-  #toggleBtn.listening{
-    background:var(--ember);
-    border-color:var(--ember);
-    color:var(--cream);
-  }
-
-  #resetBtn{
-    background:transparent;
-    color:var(--cream-dim);
-    border-color:var(--line);
-  }
-  #resetBtn:hover{border-color:var(--gold-soft); color:var(--cream);}
-
-  .status{
-    text-align:center;
-    font-size:13px;
-    color:var(--cream-dim);
-    min-height:18px;
-    margin-bottom:14px;
-  }
-  .status.live{color:var(--ember);}
-
-  .transcript-box{
-    background:var(--card);
-    border:1px solid var(--line);
-    border-radius:12px;
-    padding:14px 16px;
-    min-height:66px;
-    font-size:15px;
-    color:var(--cream-dim);
-    line-height:1.5;
-  }
-  .transcript-box .heard{color:var(--gold); font-style:italic;}
-  .live-line{
-    font-size:12px;
-    color:var(--cream-dim);
-    text-transform:uppercase;
-    letter-spacing:0.04em;
-    margin-bottom:6px;
-    min-height:14px;
-  }
-  .live-line .interim{color:var(--ember); font-style:normal; text-transform:none; letter-spacing:0; font-size:15px;}
-
-  .footnote{
-    margin-top:18px;
-    text-align:center;
-    font-size:12px;
-    color:#7d6558;
-    line-height:1.6;
-  }
-
-  @media (prefers-reduced-motion: no-preference){
-    .pulse{animation: pulse 1.6s ease-in-out infinite;}
-  }
-  @keyframes pulse{
-    0%,100%{ opacity:1; }
-    50%{ opacity:0.55; }
+  @media (max-height:700px){
+    .ring-wrap{width:min(60vmin,46vh)}
+    .num{font-size:clamp(60px,12vmin,110px)}
   }
 </style>
 </head>
 <body>
+<div class="grain"></div>
+<div class="flash" id="flash"></div>
 
-<div class="app">
-  <div class="eyebrow">जप गणना</div>
-  <h1>Naam Jap Counter</h1>
+<header>
+  <div class="wordmark"><i data-lucide="flower-2"></i><b>JAPA</b><em>voice chant counter</em></div>
+  <div class="top-actions">
+    <div class="seg">
+      <button class="seg-btn active" id="modeVoiceBtn" title="Count only when it hears your mantra"><i data-lucide="mic"></i><span>Voice</span></button>
+      <button class="seg-btn" id="modePulseBtn" title="Count every spoken repetition by rhythm"><i data-lucide="activity"></i><span>Pulse</span></button>
+    </div>
+    <button class="icon-btn" id="soundBtn" aria-label="Toggle sound"><i data-lucide="volume-2"></i></button>
+    <button class="icon-btn" id="settingsBtn" aria-label="Settings"><i data-lucide="sliders-horizontal"></i></button>
+  </div>
+</header>
 
-  <div class="mala">
-    <svg viewBox="0 0 280 280">
-      <circle cx="140" cy="140" r="128" fill="none" stroke="#4a2a2c" stroke-width="2"/>
-      <circle id="ring" cx="140" cy="140" r="128" fill="none" stroke="#d9a441" stroke-width="3"
-              stroke-linecap="round" stroke-dasharray="804" stroke-dashoffset="804"
-              transform="rotate(-90 140 140)"/>
-    </svg>
-    <div class="count-core">
-      <div class="count" id="count">0</div>
-      <div class="count-label" id="wordLabel">RAM</div>
+<main>
+  <div class="ring-wrap">
+    <div class="halo" id="halo"></div>
+    <svg id="ringSvg" viewBox="0 0 600 600" aria-hidden="true"></svg>
+    <div class="counter" id="counterBtn" role="button" aria-label="Tap to count one chant" tabindex="0">
+      <div class="num" id="num">0</div>
+      <div class="sub" id="subCount">first chant lights the first bead</div>
     </div>
   </div>
 
-  <div class="mala-progress" id="malaProgress">0 malas completed (108 per mala)</div>
+  <div class="mantra-line" id="mantraLine">—</div>
 
-  <div class="word-row">
-    <span>counting</span>
-    <input id="targetWord" type="text" value="Shree Sita Ram" spellcheck="false">
+  <div class="status-row">
+    <span class="dot" id="statusDot"></span>
+    <span id="statusText">Setting up…</span>
+    <span class="heard" id="heard"><i data-lucide="check"></i><em id="heardText"></em></span>
   </div>
 
   <div class="controls">
-    <button id="toggleBtn">Start Listening</button>
-    <button id="resetBtn">Reset</button>
+    <button class="pause-btn" id="pauseBtn"><i data-lucide="pause"></i><span>Pause</span></button>
+    <div class="hint">tap the number <span class="kbd-only">&nbsp;· or press <kbd>space</kbd></span> &nbsp;to count by hand</div>
   </div>
 
-  <div class="status" id="status">Tap start and begin chanting</div>
-
-  <div class="transcript-box">
-    <div class="live-line" id="liveLine"></div>
-    <span id="transcript">Last heard will appear here…</span>
+  <div class="footer">
+    <div class="stats">
+      <span id="malaSpan">mala 1</span><i>·</i>
+      <span id="clockSpan">0:00</span><i>·</i>
+      <span id="paceSpan">— / min</span><i>·</i>
+      <button class="linklike" id="resetSession">reset</button>
+    </div>
+    <div class="tally" id="tally"></div>
   </div>
+</main>
 
-  <div class="footnote">
-    Works in Chrome / Edge (uses the browser's speech recognition).<br>
-    Counting looks for your whole phrase in order, so "Shree Sita Ram" only counts when all three words are heard together — and it counts every repeat, with no upper limit.
+<!-- ============ SETUP OVERLAY ============ -->
+<div class="overlay" id="setupOverlay">
+  <div class="panel">
+    <div class="steps">
+      <div class="sdot active" id="sd1"><span></span><label>mantra</label></div>
+      <div class="sline"></div>
+      <div class="sdot" id="sd2"><span></span><label>voice</label></div>
+      <div class="sline"></div>
+      <div class="sdot" id="sd3"><span></span><label>begin</label></div>
+    </div>
+
+    <section class="fstep" id="fstep1">
+      <h2>What will you chant?</h2>
+      <p class="lead">A word, a phrase or a mantra — I'll listen for it and keep the count for you, one bead at a time.</p>
+      <input type="text" id="mantraInput" placeholder="e.g. Om Namah Shivaya" maxlength="60" autocomplete="off" spellcheck="false">
+      <div class="suggest" id="suggest"></div>
+      <div class="frow">
+        <button class="btn ghost" id="cancelSetup" hidden>Cancel</button>
+        <button class="btn primary" id="toStep2" disabled>Continue</button>
+      </div>
+    </section>
+
+    <section class="fstep" id="fstep2" hidden>
+      <h2>Teach me your voice</h2>
+      <p class="lead">Say <em id="calMantra"></em> three times, at the pace you'll actually chant. I'll learn your rhythm from it.</p>
+      <div class="cal-slots" id="calSlots">
+        <div class="cal-slot"><span class="cs-dot">1</span><div class="cs-track"><div class="cs-bar"></div></div><span class="cs-meta"></span></div>
+        <div class="cal-slot"><span class="cs-dot">2</span><div class="cs-track"><div class="cs-bar"></div></div><span class="cs-meta"></span></div>
+        <div class="cal-slot"><span class="cs-dot">3</span><div class="cs-track"><div class="cs-bar"></div></div><span class="cs-meta"></span></div>
+      </div>
+      <div class="cal-result" id="calResult" hidden></div>
+      <div class="frow">
+        <button class="btn ghost" id="skipCal">Skip — count by tap</button>
+        <button class="btn primary" id="startCal"><i data-lucide="mic"></i><span id="startCalLabel">Start listening</span></button>
+      </div>
+    </section>
+
+    <section class="fstep" id="fstep3" hidden>
+      <h2>Ready.</h2>
+      <div class="ready-mantra" id="readyMantra"></div>
+      <p class="lead" id="readyMeta" style="text-align:center"></p>
+      <div class="tip"><i data-lucide="info"></i><span>Leave a small pause between repetitions — that's how I tell one chant from the next. You can always tap the number or press space to count by hand.</span></div>
+      <div class="frow"><button class="btn primary" id="beginBtn"><i data-lucide="flower-2"></i>Begin chanting</button></div>
+    </section>
   </div>
 </div>
 
+<!-- ============ SETTINGS DRAWER ============ -->
+<aside class="drawer" id="drawer">
+  <div class="drawer-head"><span>Settings</span><button class="icon-btn" id="closeDrawer" aria-label="Close"><i data-lucide="x"></i></button></div>
+  <div class="dsec">
+    <label>Mantra</label>
+    <div class="mantra-row"><em id="drawerMantra">—</em><button class="btn ghost sm" id="changeMantra">Change</button></div>
+  </div>
+  <div class="dsec">
+    <label>Recognition language · voice mode</label>
+    <select id="langSel">
+      <option value="en-IN">English (India)</option>
+      <option value="en-US">English (US)</option>
+      <option value="en-GB">English (UK)</option>
+      <option value="hi-IN">हिन्दी — type the mantra in Devanagari</option>
+    </select>
+  </div>
+  <div class="dsec">
+    <label>Mic sensitivity · pulse mode</label>
+    <input type="range" id="sensRange" min="1" max="10" step="1">
+    <div class="range-marks"><span>gentle</span><span>eager</span></div>
+  </div>
+  <div class="dsec">
+    <label>Lifetime chants</label>
+    <div class="lifetime" id="lifetimeNum">0</div>
+    <button class="btn ghost sm" id="resetLifetime">Reset lifetime</button>
+    <p class="dnote">Your mantra and totals are saved in this browser only. Nothing leaves your device.</p>
+  </div>
+</aside>
+
+<div class="toasts" id="toasts"></div>
+
 <script>
-(function(){
-  const countEl = document.getElementById('count');
-  const wordLabelEl = document.getElementById('wordLabel');
-  const malaProgressEl = document.getElementById('malaProgress');
-  const targetWordInput = document.getElementById('targetWord');
-  const toggleBtn = document.getElementById('toggleBtn');
-  const resetBtn = document.getElementById('resetBtn');
-  const statusEl = document.getElementById('status');
-  const transcriptEl = document.getElementById('transcript');
-  const ring = document.getElementById('ring');
+/* ================= helpers ================= */
+const $ = s => document.querySelector(s);
+const store = {
+  get(k,d){ try{ const v=localStorage.getItem('japa.'+k); return v==null? d : JSON.parse(v);}catch(e){return d} },
+  set(k,v){ try{ localStorage.setItem('japa.'+k, JSON.stringify(v)); }catch(e){} }
+};
+const clamp=(v,a,b)=>Math.min(b,Math.max(a,v));
+const NS='http://www.w3.org/2000/svg';
+const refreshIcons=()=>{ if(window.lucide) lucide.createIcons(); };
 
-  const RING_LENGTH = 804; // 2*pi*128 approx
-  const MALA_SIZE = 108;
+const norm = s => s.toLowerCase().normalize('NFD')
+  .replace(/[\u0300-\u036f]/g,'')
+  .replace(/[^\p{L}\p{N}\s]/gu,' ')
+  .replace(/\s+/g,' ').trim();
 
-  let count = 0;
-  let listening = false;
-  let recognition = null;
-  let shouldBeListening = false; // tracks user intent, used to auto-restart
-  // Track how many results we've already scanned so we never re-count the
-  // same finalized phrase twice. This is the key fix for "wrong counting":
-  // the Web Speech API replays the whole results array on every event, and
-  // if you count from interim (non-final) results, or re-scan results you
-  // already processed, every partial revision of the same phrase gets
-  // counted again.
-  let lastProcessedResultIndex = 0;
-
-  // Carries trailing words that didn't complete a phrase match yet, so a
-  // phrase spoken right across a pause boundary (e.g. "Shree Sita" ends one
-  // final chunk, "Ram" starts the next) still gets matched instead of lost.
-  let carryWords = [];
-
-  function cleanToWords(text){
-    return text
-      .toLowerCase()
-      .replace(/[.,!?;:"'’‘\-]/g, ' ')
-      .split(/\s+/)
-      .filter(Boolean);
+function lev(a,b){
+  if(a===b) return 0; const m=a.length,n=b.length;
+  if(!m) return n; if(!n) return m;
+  let prev=Array.from({length:n+1},(_,i)=>i), cur=new Array(n+1);
+  for(let i=1;i<=m;i++){ cur[0]=i;
+    for(let j=1;j<=n;j++) cur[j]=Math.min(prev[j]+1,cur[j-1]+1,prev[j-1]+(a[i-1]===b[j-1]?0:1));
+    [prev,cur]=[cur,prev];
   }
+  return prev[n];
+}
+const sim=(a,b)=>{ if(!a||!b) return 0; return 1 - lev(a,b)/Math.max(a.length,b.length); };
 
-  function getTargetWords(){
-    const raw = (targetWordInput.value || 'Shree Sita Ram').trim();
-    return cleanToWords(raw);
-  }
+function toast(msg, icon='info'){
+  const el=document.createElement('div'); el.className='toast';
+  el.innerHTML=`<i data-lucide="${icon}"></i><span></span>`;
+  el.querySelector('span').textContent=msg;
+  $('#toasts').appendChild(el); refreshIcons();
+  setTimeout(()=>{ el.style.transition='opacity .4s'; el.style.opacity='0'; setTimeout(()=>el.remove(),400); }, 3600);
+}
 
-  function updateWordLabel(){
-    wordLabelEl.textContent = (targetWordInput.value || 'SHREE SITA RAM').toUpperCase();
-  }
+/* ================= state ================= */
+const SRClass = window.SpeechRecognition || window.webkitSpeechRecognition;
+const state = {
+  step:'setup', running:false, setupOpen:true, isEdit:false,
+  mode: store.get('mode', SRClass ? 'voice' : 'pulse'),
+  mantra: store.get('mantra',''),
+  mNorm:'', cal: store.get('cal',null),
+  sound: store.get('sound',true),
+  sens: store.get('sens',7),
+  lang: store.get('lang','en-IN'),
+  total:0, lifetime: store.get('lifetime',0),
+  pending:'', sessionStart:null, accumulated:0,
+};
+if(state.mode==='voice' && !SRClass) state.mode='pulse';
+state.mNorm = norm(state.mantra);
+let micError=false, shouldListen=false, prevMantra='';
 
-  // Counts every non-overlapping occurrence of targetWords inside combined
-  // (carryWords + new words), in order. No upper limit — every repeat of
-  // the full phrase adds 1. Leftover trailing words that couldn't complete
-  // a match are kept in carryWords for the next chunk.
-  function countPhraseOccurrences(newWords, targetWords){
-    if(targetWords.length === 0) return 0;
-    const combined = carryWords.concat(newWords);
-    let i = 0;
-    let matches = 0;
-    while(i <= combined.length - targetWords.length){
-      let isMatch = true;
-      for(let j = 0; j < targetWords.length; j++){
-        if(combined[i + j] !== targetWords[j]){ isMatch = false; break; }
-      }
-      if(isMatch){
-        matches++;
-        i += targetWords.length;
-      } else {
-        i++;
-      }
+/* ================= audio (ctx + mic) ================= */
+const AC = {
+  ctx:null, master:null,
+  get(){
+    if(!this.ctx){
+      this.ctx = new (window.AudioContext||window.webkitAudioContext)();
+      this.master = this.ctx.createGain(); this.master.gain.value=.9;
+      this.master.connect(this.ctx.destination);
     }
-    const carryLen = Math.min(targetWords.length - 1, combined.length - i);
-    carryWords = carryLen > 0 ? combined.slice(combined.length - carryLen) : [];
-    return matches;
+    if(this.ctx.state==='suspended') this.ctx.resume();
+    return this.ctx;
   }
-
-  function renderCount(){
-    countEl.textContent = count;
-    const malas = Math.floor(count / MALA_SIZE);
-    const remainder = count % MALA_SIZE;
-    malaProgressEl.textContent = malas > 0
-      ? `${malas} mala${malas > 1 ? 's' : ''} complete · ${remainder}/${MALA_SIZE} into the next`
-      : `${remainder}/${MALA_SIZE} into the first mala`;
-    const progress = remainder / MALA_SIZE;
-    const offset = RING_LENGTH * (1 - progress);
-    ring.style.strokeDashoffset = offset;
+};
+const Mic = {
+  stream:null, an:null, data:null, level:0, env:0, floor:0.012,
+  async ensure(){
+    const ctx = AC.get();
+    if(this.an){ if(ctx.state==='suspended') await ctx.resume(); return; }
+    this.stream = await navigator.mediaDevices.getUserMedia({
+      audio:{ echoCancellation:false, noiseSuppression:false, autoGainControl:false }
+    });
+    const src = ctx.createMediaStreamSource(this.stream);
+    this.an = ctx.createAnalyser(); this.an.fftSize=1024; this.an.smoothingTimeConstant=.4;
+    src.connect(this.an);
+    this.data = new Uint8Array(this.an.fftSize);
+    this.level=0; this.env=0; this.floor=0.012;
+  },
+  stop(){
+    if(this.stream){ this.stream.getTracks().forEach(t=>t.stop()); this.stream=null; }
+    this.an=null; this.level=0; this.env=0;
+  },
+  rms(){
+    if(!this.an) return 0;
+    this.an.getByteTimeDomainData(this.data);
+    let s=0, n=0;
+    for(let i=0;i<this.data.length;i+=2){ const v=(this.data[i]-128)/128; s+=v*v; n++; }
+    return Math.sqrt(s/n);
   }
+};
 
-  function setStatus(text, live){
-    statusEl.textContent = text;
-    statusEl.classList.toggle('live', !!live);
+/* ================= synthesized sounds ================= */
+const Sfx = {
+  tick(){
+    if(!state.sound) return;
+    try{
+      const c=AC.get(), t=c.currentTime;
+      const o=c.createOscillator(), g=c.createGain();
+      const f=740*(0.97+Math.random()*0.06);
+      o.type='sine';
+      o.frequency.setValueAtTime(f,t);
+      o.frequency.exponentialRampToValueAtTime(f*0.72, t+0.09);
+      g.gain.setValueAtTime(0.0001,t);
+      g.gain.exponentialRampToValueAtTime(0.2, t+0.008);
+      g.gain.exponentialRampToValueAtTime(0.0001, t+0.14);
+      o.connect(g).connect(AC.master); o.start(t); o.stop(t+0.16);
+    }catch(e){}
+  },
+  bell(){
+    if(!state.sound) return;
+    try{
+      const c=AC.get(), t=c.currentTime, base=196;
+      [[1,.2,6],[2.68,.09,4],[4.84,.05,2.6]].forEach(([r,g0,d])=>{
+        const o=c.createOscillator(), g=c.createGain();
+        o.type='sine'; o.frequency.value = base*r*(1+(Math.random()-0.5)*0.002);
+        g.gain.setValueAtTime(0.0001,t);
+        g.gain.exponentialRampToValueAtTime(g0, t+0.02);
+        g.gain.exponentialRampToValueAtTime(0.0001, t+d);
+        o.connect(g).connect(AC.master); o.start(t); o.stop(t+d+0.1);
+      });
+    }catch(e){}
   }
+};
 
-  function showHeard(text){
-    transcriptEl.innerHTML = '';
-    const span = document.createElement('span');
-    span.className = 'heard';
-    span.textContent = '"' + text + '"';
-    transcriptEl.appendChild(span);
+/* ================= mala ring ================= */
+const svg=$('#ringSvg');
+const beads=[]; let guruEl, ripplesG, ARC_C=0, arcLvl=0;
+(function buildRing(){
+  const CX=300, CY=300, R=252, GAP=360/108;
+  // inner level arc
+  const ARC_R=212; ARC_C=2*Math.PI*ARC_R;
+  const arc=document.createElementNS(NS,'circle');
+  arc.setAttribute('cx',CX); arc.setAttribute('cy',CY); arc.setAttribute('r',ARC_R);
+  arc.setAttribute('class','level-arc'); arc.id='levelArc';
+  arc.setAttribute('transform',`rotate(-90 ${CX} ${CY})`);
+  arc.setAttribute('stroke-dasharray',`0 ${ARC_C}`);
+  svg.appendChild(arc);
+  // ripples layer
+  ripplesG=document.createElementNS(NS,'g'); svg.appendChild(ripplesG);
+  // 108 beads
+  for(let i=0;i<108;i++){
+    const a=(-90+GAP*(i+1))*Math.PI/180;
+    const c=document.createElementNS(NS,'circle');
+    c.setAttribute('cx',(CX+R*Math.cos(a)).toFixed(2));
+    c.setAttribute('cy',(CY+R*Math.sin(a)).toFixed(2));
+    c.setAttribute('r','5.4'); c.setAttribute('class','bead');
+    svg.appendChild(c); beads.push(c);
   }
-
-  const liveLineEl = document.getElementById('liveLine');
-  function showLive(text){
-    if(!text){ liveLineEl.textContent = ''; return; }
-    liveLineEl.innerHTML = '';
-    const span = document.createElement('span');
-    span.className = 'interim';
-    span.textContent = text;
-    liveLineEl.appendChild(span);
-  }
-
-  const SpeechRecognitionCtor = window.SpeechRecognition || window.webkitSpeechRecognition;
-
-  if(!SpeechRecognitionCtor){
-    setStatus('Speech recognition is not supported in this browser. Try Chrome or Edge.', false);
-    toggleBtn.disabled = true;
-  } else {
-    recognition = new SpeechRecognitionCtor();
-    recognition.lang = 'en-IN';
-    recognition.continuous = true;
-    recognition.interimResults = true;
-
-    recognition.onresult = function(event){
-      const targetWords = getTargetWords();
-
-      // Show the latest interim (not-yet-final) words live, so you see
-      // what it's hearing while you're still mid-phrase.
-      let interimText = '';
-      for(let i = lastProcessedResultIndex; i < event.results.length; i++){
-        if(!event.results[i].isFinal){
-          interimText += event.results[i][0].transcript;
-        }
-      }
-      showLive(interimText.trim());
-
-      // Only ever look at NEW final results starting from where we left off.
-      // Skipping already-processed indices is what prevents re-counting.
-      for(let i = lastProcessedResultIndex; i < event.results.length; i++){
-        const result = event.results[i];
-        if(result.isFinal){
-          const finalText = result[0].transcript.trim();
-          if(finalText){
-            const words = cleanToWords(finalText);
-            const found = countPhraseOccurrences(words, targetWords);
-            if(found > 0){
-              count += found;
-              renderCount();
-            }
-            showHeard(finalText);
-          }
-          lastProcessedResultIndex = i + 1;
-        }
-      }
-    };
-
-    recognition.onstart = function(){
-      setStatus('Listening… chant naturally', true);
-    };
-
-    recognition.onerror = function(event){
-      if(event.error === 'no-speech' || event.error === 'audio-capture'){
-        // benign — keep going, onend will fire next and we restart there
-        return;
-      }
-      if(event.error === 'not-allowed' || event.error === 'service-not-allowed'){
-        setStatus('Microphone access denied. Allow mic permission and try again.', false);
-        shouldBeListening = false;
-        stopUI();
-      }
-      // other errors (network, aborted, etc.) fall through to onend,
-      // which handles the restart.
-    };
-
-    let restartTimer = null;
-    function safeRestart(delay){
-      if(restartTimer) return; // a restart is already scheduled
-      restartTimer = setTimeout(function(){
-        restartTimer = null;
-        if(!shouldBeListening) return;
-        try{
-          recognition.start();
-        }catch(e){
-          // Recognition object wasn't fully reset yet (common right after
-          // stop/end fires). Back off a bit longer and try once more.
-          safeRestart(500);
-        }
-      }, delay || 250);
-    }
-
-    recognition.onend = function(){
-      // The browser stops recognition after almost every pause, even with
-      // continuous = true — this is normal, not an error. If the user still
-      // wants to be listening, restart it after a short delay (calling
-      // start() synchronously here is what was causing the silent freeze —
-      // Chrome throws InvalidStateError if the object hasn't reset yet).
-      lastProcessedResultIndex = 0;
-      carryWords = [];
-      if(shouldBeListening){
-        setStatus('Listening… chant naturally', true);
-        safeRestart(250);
-      } else {
-        stopUI();
-      }
-    };
-  }
-
-  function startUI(){
-    listening = true;
-    toggleBtn.textContent = 'Stop Listening';
-    toggleBtn.classList.add('listening');
-    setStatus('Listening… chant naturally', true);
-  }
-
-  function stopUI(){
-    listening = false;
-    toggleBtn.textContent = 'Start Listening';
-    toggleBtn.classList.remove('listening');
-    setStatus('Paused. Tap start to resume.', false);
-  }
-
-  toggleBtn.addEventListener('click', function(){
-    if(!recognition) return;
-    if(!listening){
-      shouldBeListening = true;
-      lastProcessedResultIndex = 0;
-      carryWords = [];
-      try{
-        recognition.start();
-        startUI();
-      }catch(e){
-        // recognition might already be in a starting state; ignore
-      }
-    } else {
-      shouldBeListening = false;
-      recognition.stop();
-      stopUI();
-    }
-  });
-
-  resetBtn.addEventListener('click', function(){
-    count = 0;
-    carryWords = [];
-    renderCount();
-    transcriptEl.textContent = 'Last heard will appear here…';
-    showLive('');
-    setStatus(listening ? 'Listening… chant naturally' : 'Tap start and begin chanting', listening);
-  });
-
-  targetWordInput.addEventListener('input', function(){
-    updateWordLabel();
-    carryWords = [];
-  });
-
-  updateWordLabel();
-  renderCount();
+  // tassel + guru bead
+  const tl=document.createElementNS(NS,'line');
+  tl.setAttribute('x1',300); tl.setAttribute('y1',CY-R-12);
+  tl.setAttribute('x2',300); tl.setAttribute('y2',CY-R-34);
+  tl.setAttribute('stroke','#3A2E23'); tl.setAttribute('stroke-width','2'); tl.setAttribute('stroke-linecap','round');
+  svg.appendChild(tl);
+  const te=document.createElementNS(NS,'circle');
+  te.setAttribute('cx',300); te.setAttribute('cy',CY-R-38); te.setAttribute('r','3');
+  te.setAttribute('fill','#2C231B'); svg.appendChild(te);
+  guruEl=document.createElementNS(NS,'circle');
+  guruEl.setAttribute('cx',300); guruEl.setAttribute('cy',CY-R); guruEl.setAttribute('r','8');
+  guruEl.setAttribute('class','guru'); svg.appendChild(guruEl);
 })();
-</script>
+const levelArc=$('#levelArc');
 
+function ripple(){
+  const c=document.createElementNS(NS,'circle');
+  c.setAttribute('cx',300); c.setAttribute('cy',300); c.setAttribute('r',40);
+  c.setAttribute('class','ripple-c');
+  ripplesG.appendChild(c); setTimeout(()=>c.remove(),720);
+}
+function lightBead(idx){
+  if(state.total>1 && state.total%108!==1) beads[(idx-1+108)%108].classList.remove('fresh');
+  const b=beads[idx]; b.classList.add('lit','fresh');
+}
+function flareRing(){
+  beads.forEach((b,i)=> setTimeout(()=>{ b.classList.add('flare'); setTimeout(()=>b.classList.remove('flare','lit'),380); }, i*4));
+  guruEl.classList.add('flare'); setTimeout(()=>guruEl.classList.remove('flare'),900);
+  const h=$('#halo'); h.classList.remove('blaze'); void h.offsetWidth; h.classList.add('blaze');
+  const f=$('#flash'); f.classList.remove('go'); void f.offsetWidth; f.classList.add('go');
+}
+
+/* ================= mantra matching ================= */
+function matchMantra(raw){
+  const mW=state.mNorm.split(' ');
+  const toks=[]; const re=/[^\s]+/g; let m;
+  while((m=re.exec(raw))) toks.push({ w:norm(m[0]), s:m.index, e:m.index+m[0].length });
+  let count=0, lastEnd=-1, startOfLast=-1;
+  if(mW.length===1){
+    const thr = mW[0].length<=4 ? 0.5 : 0.72;
+    for(const t of toks){
+      if(t.w && (sim(t.w,mW[0])>=thr || (mW[0].length>=3 && t.w.startsWith(mW[0])))){
+        count++; lastEnd=t.e; if(startOfLast<0) startOfLast=t.s;
+      }
+    }
+  }else{
+    const L=mW.length;
+    for(let s=0; s+L<=toks.length; s++){
+      let sum=0; for(let k=0;k<L;k++) sum+=sim(toks[s+k].w,mW[k]);
+      if(sum/L>=0.64){
+        count++; lastEnd=toks[s+L-1].e;
+        if(startOfLast<0) startOfLast=toks[s].s;
+        s+=L-1;
+      }
+    }
+  }
+  if(count>0) return { count, rest: raw.slice(lastEnd), heard: raw.slice(startOfLast,lastEnd) };
+  const keep=Math.max(1,mW.length-1);
+  let tail = toks.length>keep ? raw.slice(toks[toks.length-keep].s) : raw;
+  if(tail.length>90) tail=' '+tail.slice(-90);
+  return { count:0, rest:tail, heard:'' };
+}
+
+/* ================= speech recognition ================= */
+let rec=null, recActive=false, recRestartT=null;
+function startRec(){
+  if(!SRClass || state.mode!=='voice' || !shouldListen || recActive) return;
+  rec = new SRClass();
+  rec.lang=state.lang; rec.continuous=true; rec.interimResults=true; rec.maxAlternatives=1;
+  rec.onresult = e=>{
+    let finalChunk='', interim='';
+    for(let i=e.resultIndex;i<e.results.length;i++){
+      const r=e.results[i];
+      if(r.isFinal) finalChunk += r[0].transcript+' ';
+      else interim += r[0].transcript;
+    }
+    if(interim) showInterim(interim);
+    if(finalChunk) handleFinal(finalChunk);
+  };
+  rec.onend = ()=>{ recActive=false; if(shouldListen && state.mode==='voice') recRestartT=setTimeout(startRec,250); };
+  rec.onerror = e=>{
+    if(e.error==='not-allowed'||e.error==='service-not-allowed'){
+      setMode('pulse');
+      toast('Voice recognition blocked — switched to sound pulses','mic-off');
+    }else if(e.error==='network'){
+      setMode('pulse');
+      toast('Speech service needs a connection — using sound pulses','mic-off');
+    }
+  };
+  try{ rec.start(); recActive=true; }catch(e){}
+}
+function stopRec(){
+  shouldListen=false; clearTimeout(recRestartT);
+  if(rec){ try{ rec.onend=null; rec.stop(); }catch(e){} }
+  recActive=false;
+}
+function handleFinal(text){
+  if(state.step!=='chanting' || !state.running || state.mode!=='voice' || !state.mNorm) return;
+  state.pending = (state.pending+' '+text).trim();
+  const res = matchMantra(state.pending);
+  state.pending = res.rest;
+  if(res.count>0){
+    for(let i=0;i<res.count;i++) registerChant('voice');
+    showHeard(res.heard);
+  }
+}
+
+/* heard indicator */
+let heardT=null;
+const heardEl=$('#heard'), heardText=$('#heardText');
+function showHeard(t){
+  clearTimeout(heardT);
+  heardEl.classList.remove('soft'); heardEl.classList.add('show');
+  heardText.textContent='“'+t.trim()+'”';
+  heardT=setTimeout(()=>heardEl.classList.remove('show'),1800);
+}
+function showInterim(t){
+  clearTimeout(heardT);
+  heardEl.classList.add('soft','show');
+  heardText.textContent='… '+t.trim().slice(-26);
+  heardT=setTimeout(()=>heardEl.classList.remove('show'),1400);
+}
+
+/* ================= pulse detection ================= */
+const mult = ()=> 5.1 - 0.36*state.sens;
+const Pulse = {
+  inPulse:false, t0:0, peak:0, belowSince:0, lastEmit:0,
+  thr(){ return Math.max(Mic.floor*mult(), Mic.floor+0.014, 0.011); },
+  step(t){
+    const thr=this.thr();
+    if(!this.inPulse){
+      if(Mic.env>thr){ this.inPulse=true; this.t0=t; this.peak=Mic.env; this.belowSince=0; }
+    }else{
+      this.peak=Math.max(this.peak,Mic.env);
+      if(Mic.env < thr*0.55){
+        if(!this.belowSince) this.belowSince=t;
+        if(t-this.belowSince>0.075){
+          const dur=t-this.t0; this.inPulse=false;
+          if(dur>0.05 && this.peak>thr*1.15 && t-this.lastEmit>0.15){
+            this.lastEmit=t; this.emit(dur);
+          }
+        }
+      }else this.belowSince=0;
+    }
+  },
+  emit(dur){
+    if(calState.active) onCalPulse(dur,'');
+    else if(state.running && state.step==='chanting' && state.mode==='pulse') registerChant('pulse');
+  }
+};
+
+/* ================= main loop ================= */
+let lastTs=0, clockTick=0;
+function loop(ts){
+  requestAnimationFrame(loop);
+  const t=ts/1000;
+  const dt=clamp(t-(lastTs||t),0,0.05); lastTs=t;
+  if(Mic.an){
+    const rms=Mic.rms();
+    Mic.level += (rms-Mic.level)*0.4;
+    Mic.env = Math.max(rms, Mic.env*Math.exp(-dt/0.10));
+    const listening = state.running && !document.hidden;
+    if(calState.active || listening){
+      if(!Pulse.inPulse && Mic.env < Pulse.thr()) Mic.floor += (rms-Mic.floor)*0.03;
+      Pulse.step(t);
+    }
+    // level arc
+    const target=clamp(Mic.level*7.5,0,1);
+    arcLvl += (target-arcLvl)*0.25;
+    levelArc.setAttribute('stroke-dasharray',`${(arcLvl*ARC_C).toFixed(1)} ${ARC_C.toFixed(1)}`);
+    levelArc.style.opacity = (state.running||calState.active) ? 1 : .25;
+  }else{
+    arcLvl*=0.9; levelArc.setAttribute('stroke-dasharray',`${(arcLvl*ARC_C).toFixed(1)} ${ARC_C.toFixed(1)}`);
+  }
+  if(state.running && ts-clockTick>500){ clockTick=ts; $('#clockSpan').textContent=fmtClock(elapsedMs()); }
+}
+requestAnimationFrame(loop);
+
+/* ================= counting ================= */
+const numEl=$('#num'), subEl=$('#subCount');
+function registerChant(){
+  if(state.step!=='chanting') return;
+  state.total++; state.lifetime++; store.set('lifetime',state.lifetime);
+  if(!state.sessionStart) state.sessionStart=performance.now();
+  Sfx.tick();
+  numEl.textContent=state.total;
+  numEl.classList.remove('pop'); void numEl.offsetWidth; numEl.classList.add('pop');
+  ripple();
+  lightBead((state.total-1)%108);
+  if(state.total%108===0) malaComplete(Math.floor(state.total/108));
+  updateStatsRow(); updateSub();
+}
+function malaComplete(n){
+  Sfx.bell(); flareRing(); updateTally();
+  statusFlash(`Mala ${n} complete — 108 chants`);
+  numEl.classList.add('gold'); setTimeout(()=>numEl.classList.remove('gold'),1800);
+}
+function updateSub(){
+  subEl.textContent = state.total===0
+    ? 'first chant lights the first bead'
+    : `bead ${((state.total-1)%108)+1} of 108`;
+}
+const elapsedMs=()=> state.accumulated + (state.running && state.sessionStart ? performance.now()-state.sessionStart : 0);
+function fmtClock(ms){
+  const s=Math.floor(ms/1000), m=Math.floor(s/60), ss=s%60, h=Math.floor(m/60);
+  return h? `${h}:${String(m%60).padStart(2,'0')}:${String(ss).padStart(2,'0')}` : `${m}:${String(ss).padStart(2,'0')}`;
+}
+function updateStatsRow(){
+  $('#malaSpan').textContent = 'mala '+(state.total? Math.floor((state.total-1)/108)+1 : 1);
+  const mins=elapsedMs()/60000;
+  $('#paceSpan').textContent = (state.total>0 && mins>0.25) ? `${Math.round(state.total/mins)} / min` : '— / min';
+}
+function updateTally(){
+  const m=Math.floor(state.total/108), el=$('#tally');
+  if(!m){ el.innerHTML=''; return; }
+  let html=''; for(let i=0;i<Math.min(m,8);i++) html+='<i data-lucide="flower-2"></i>';
+  if(m>8) html+=`<span class="tx">× ${m}</span>`;
+  el.innerHTML=html; refreshIcons();
+}
+let flashT=null;
+function statusFlash(msg){
+  const st=$('#statusText'); st.textContent=msg; st.classList.add('hi');
+  clearTimeout(flashT); flashT=setTimeout(()=>{ st.classList.remove('hi'); setStatus(); },2600);
+}
+function setStatus(){
+  const dot=$('#statusDot'), txt=$('#statusText');
+  dot.className='dot'; txt.classList.remove('hi');
+  if(state.step!=='chanting'){ txt.textContent='Setting up…'; return; }
+  if(micError){ dot.classList.add('err'); txt.textContent='Microphone unavailable — tap the number to count'; return; }
+  if(!state.running){ txt.textContent='Paused'; return; }
+  dot.classList.add('live');
+  txt.textContent = state.mode==='voice' ? `Listening for “${state.mantra}”` : 'Counting each repetition by its sound';
+}
+
+/* ================= engines start / stop ================= */
+async function startEngines(){
+  try{ await Mic.ensure(); micError=false; }
+  catch(e){
+    micError=true; setStatus();
+    toast('Microphone unavailable — tap the number to count','mic-off');
+    return;
+  }
+  if(state.mode==='voice'){ shouldListen=true; startRec(); }
+  setStatus();
+}
+function stopEngines(){
+  stopRec(); Mic.stop(); setStatus();
+}
+function setRunning(r){
+  if(r===state.running) return;
+  state.running=r;
+  if(r){ state.sessionStart=performance.now(); startEngines(); }
+  else { state.accumulated+=performance.now()-state.sessionStart; stopEngines(); }
+  pauseUI();
+}
+function pauseUI(){
+  $('#pauseBtn').innerHTML = state.running
+    ? '<i data-lucide="pause"></i><span>Pause</span>'
+    : '<i data-lucide="play"></i><span>Resume</span>';
+  refreshIcons();
+}
+
+/* ================= mode / sound ================= */
+function setMode(m){
+  if(m==='voice' && !SRClass) return;
+  state.mode=m; store.set('mode',m);
+  $('#modeVoiceBtn').classList.toggle('active',m==='voice');
+  $('#modePulseBtn').classList.toggle('active',m==='pulse');
+  $('#modeVoiceBtn').disabled = !SRClass;
+  state.pending='';
+  if(state.running){
+    if(m==='voice'){ shouldListen=true; startRec(); }
+    else stopRec();
+  }
+  setStatus();
+}
+ $('#modeVoiceBtn').addEventListener('click',()=>setMode('voice'));
+ $('#modePulseBtn').addEventListener('click',()=>setMode('pulse'));
+if(!SRClass){ $('#modeVoiceBtn').title='Speech recognition is not available in this browser'; }
+
+function soundUI(){ $('#soundBtn').innerHTML=`<i data-lucide="${state.sound?'volume-2':'volume-x'}"></i>`; refreshIcons(); }
+ $('#soundBtn').addEventListener('click',()=>{ state.sound=!state.sound; store.set('sound',state.sound); soundUI(); });
+
+/* ================= controls ================= */
+ $('#pauseBtn').addEventListener('click',()=>{
+  if(state.step!=='chanting') return;
+  setRunning(!state.running);
+});
+function manualCount(){
+  if(state.setupOpen || state.step!=='chanting') return;
+  if(!state.running){ setRunning(true); return; }
+  registerChant();
+}
+ $('#counterBtn').addEventListener('click',manualCount);
+window.addEventListener('keydown',e=>{
+  if(e.code==='Space' && !state.setupOpen && !/INPUT|SELECT|TEXTAREA/.test(document.activeElement.tagName)){
+    e.preventDefault();
+    if(!e.repeat) manualCount();
+  }
+  if(e.key==='Escape'){ closeDrawer(); }
+});
+
+/* reset session (inline confirm, no popups) */
+let resetArm=false, resetT=null;
+const resetBtn=$('#resetSession');
+resetBtn.addEventListener('click',()=>{
+  if(!resetArm){
+    resetArm=true; resetBtn.textContent='sure?'; resetBtn.classList.add('warn');
+    resetT=setTimeout(()=>{ resetArm=false; resetBtn.textContent='reset'; resetBtn.classList.remove('warn'); },2500);
+  }else{
+    clearTimeout(resetT); resetArm=false;
+    resetBtn.textContent='reset'; resetBtn.classList.remove('warn');
+    state.total=0; state.accumulated=0; state.sessionStart=state.running?performance.now():null;
+    state.pending='';
+    beads.forEach(b=>b.classList.remove('lit','fresh'));
+    numEl.textContent='0'; updateSub(); updateStatsRow(); updateTally(); setStatus();
+    toast('Session reset','rotate-ccw');
+  }
+});
+
+/* ================= setup flow ================= */
+const overlay=$('#setupOverlay');
+const mantraInput=$('#mantraInput');
+const SUGGESTIONS=['Om Namah Shivaya','Om Mani Padme Hum','Hare Krishna','Om','Sri Ram Jai Ram','Waheguru','Om Shanti Shanti Shanti'];
+ $('#suggest').innerHTML = SUGGESTIONS.map(s=>`<button class="chip">${s}</button>`).join('');
+document.querySelectorAll('.chip').forEach(c=>c.addEventListener('click',()=>{
+  mantraInput.value=c.textContent; validateMantra(); mantraInput.focus();
+}));
+function validateMantra(){ $('#toStep2').disabled = mantraInput.value.trim().length<2; }
+mantraInput.addEventListener('input',validateMantra);
+mantraInput.addEventListener('keydown',e=>{ if(e.key==='Enter' && !$('#toStep2').disabled) $('#toStep2').click(); });
+
+function showStep(n){
+  [1,2,3].forEach(i=>$('#fstep'+i).hidden = i!==n);
+  [1,2,3].forEach(i=>{
+    const d=$('#sd'+i);
+    d.classList.toggle('active', i===n);
+    d.classList.toggle('done', i<n);
+  });
+}
+function openSetup(isEdit){
+  state.isEdit=isEdit; prevMantra=state.mantra;
+  $('#cancelSetup').hidden=!isEdit;
+  mantraInput.value=state.mantra; validateMantra();
+  calReset(); showStep(1);
+  overlay.classList.add('open'); state.setupOpen=true;
+}
+function closeSetup(){
+  overlay.classList.remove('open'); state.setupOpen=false;
+  calState.active=false; stopCalRec();
+}
+ $('#cancelSetup').addEventListener('click',()=>{
+  state.mantra=prevMantra; store.set('mantra',prevMantra); state.mNorm=norm(prevMantra); state.pending='';
+  closeSetup(); openDrawer();
+});
+overlay.addEventListener('click',e=>{ if(e.target===overlay && state.isEdit) $('#cancelSetup').click(); });
+
+ $('#toStep2').addEventListener('click',()=>{
+  state.mantra=mantraInput.value.trim(); store.set('mantra',state.mantra);
+  state.mNorm=norm(state.mantra); state.pending='';
+  $('#calMantra').textContent=`“${state.mantra}”`;
+  showStep(2);
+});
+
+/* --- calibration --- */
+let calState={ active:false, captures:[], lastPulse:0, timeoutT:null };
+const calSlots=[...document.querySelectorAll('.cal-slot')];
+function calReset(){
+  calState={ active:false, captures:[], lastPulse:0, timeoutT:null };
+  calSlots.forEach(s=>{ s.classList.remove('done','armed');
+    s.querySelector('.cs-bar').style.width='0'; s.querySelector('.cs-meta').textContent=''; });
+  const cr=$('#calResult'); cr.hidden=true; cr.classList.remove('err');
+  $('#startCal').disabled=false; $('#startCalLabel').textContent='Start listening';
+}
+function refreshCalArmed(){
+  calSlots.forEach((s,i)=>s.classList.toggle('armed', calState.active && i===calState.captures.length));
+}
+function onCalPulse(dur,heard,force){
+  if(!calState.active || calState.captures.length>=3) return;
+  const now=performance.now();
+  if(!force && now-calState.lastPulse<350) return;
+  calState.lastPulse=now;
+  const i=calState.captures.length;
+  calState.captures.push({dur});
+  const slot=calSlots[i];
+  slot.classList.remove('armed'); slot.classList.add('done');
+  slot.querySelector('.cs-bar').style.width=(dur? clamp(dur/2.2,0.1,1)*100 : 55)+'%';
+  slot.querySelector('.cs-meta').textContent = heard? `“${heard.slice(0,15)}”` : (dur? dur.toFixed(1)+'s' : 'heard');
+  $('#startCalLabel').textContent=`Listening… ${i+1}/3`;
+  if(calState.captures.length===3) finishCal();
+}
+function finishCal(){
+  calState.active=false; clearTimeout(calState.timeoutT); stopCalRec();
+  const durs=calState.captures.map(c=>c.dur).filter(Boolean);
+  const avg = durs.length? durs.reduce((a,b)=>a+b,0)/durs.length : null;
+  if(avg){ state.cal={dur:avg}; store.set('cal',state.cal); }
+  const cr=$('#calResult'); cr.hidden=false;
+  cr.innerHTML = `<i data-lucide="activity"></i><span>${
+    avg? `Rhythm learned — about ${avg.toFixed(1)}s per chant.`
+       : 'Voice captured — you\'re ready.'
+  }</span>`;
+  refreshIcons();
+  $('#startCal').disabled=true; $('#startCalLabel').textContent='Calibrated';
+  setTimeout(()=>{ if(overlay.classList.contains('open') && !$('#fstep2').hidden) gotoStep3(); },1200);
+}
+function gotoStep3(){
+  $('#readyMantra').textContent=`“${state.mantra}”`;
+  const langName={'en-US':'English (US)','en-IN':'English (India)','en-GB':'English (UK)','hi-IN':'हिन्दी'};
+  $('#readyMeta').textContent = state.mode==='voice'
+    ? `Voice matching · ${langName[state.lang]} — it counts only when it clearly hears your mantra.`
+    : `Sound pulse — every spoken repetition is counted by rhythm. Works even offline.`;
+  if(state.cal && state.cal.dur) $('#readyMeta').textContent += ` Your rhythm: ~${state.cal.dur.toFixed(1)}s per chant.`;
+  showStep(3);
+}
+async function startCalibration(){
+  try{ await Mic.ensure(); }catch(e){
+    toast('Microphone unavailable — you can skip and count by tap','mic-off'); return;
+  }
+  calReset();
+  calState.active=true; refreshCalArmed();
+  $('#startCal').disabled=true; $('#startCalLabel').textContent='Listening… 0/3';
+  startCalRec();
+  calState.timeoutT=setTimeout(()=>{
+    if(calState.active && calState.captures.length<3){
+      calState.active=false; stopCalRec(); refreshCalArmed();
+      const cr=$('#calResult'); cr.hidden=false; cr.classList.add('err');
+      cr.innerHTML=`<i data-lucide="mic-off"></i><span>No voice detected — check your mic, or skip.</span>`;
+      refreshIcons();
+      $('#startCal').disabled=false; $('#startCalLabel').textContent='Try again';
+    }
+  },25000);
+}
+let calRec=null;
+function startCalRec(){
+  if(!SRClass || !state.mNorm) return;
+  stopCalRec();
+  calRec=new SRClass(); calRec.lang=state.lang; calRec.continuous=true; calRec.interimResults=false;
+  calRec.onresult=e=>{
+    for(let i=e.resultIndex;i<e.results.length;i++){
+      if(!e.results[i].isFinal) continue;
+      const r=matchMantra(e.results[i][0].transcript+' ');
+      for(let k=0;k<r.count && calState.captures.length<3;k++){
+        const recent = performance.now()-calState.lastPulse<2600;
+        if(recent && k===0){
+          const last=calSlots[calState.captures.length-1];
+          if(last && !last.querySelector('.cs-meta').textContent)
+            last.querySelector('.cs-meta').textContent=`“${r.heard.slice(0,15)}”`;
+        }else onCalPulse(null, r.heard, true);
+      }
+    }
+  };
+  try{ calRec.start(); }catch(e){}
+}
+function stopCalRec(){ if(calRec){ try{ calRec.onend=null; calRec.stop(); }catch(e){} calRec=null; } }
+
+ $('#startCal').addEventListener('click',startCalibration);
+ $('#skipCal').addEventListener('click',()=>{ calState.active=false; stopCalRec(); clearTimeout(calState.timeoutT); gotoStep3(); });
+ $('#beginBtn').addEventListener('click',async()=>{
+  closeSetup();
+  state.step='chanting';
+  $('#mantraLine').textContent=`“${state.mantra}”`;
+  document.title=`${state.mantra} · Japa`;
+  $('#drawerMantra').textContent=state.mantra;
+  updateSub(); updateStatsRow(); setStatus();
+  await setRunning(true);
+  window.focus();
+});
+
+/* ================= drawer ================= */
+const drawer=$('#drawer');
+function openDrawer(){
+  $('#drawerMantra').textContent=state.mantra||'—';
+  $('#langSel').value=state.lang;
+  $('#sensRange').value=state.sens;
+  $('#lifetimeNum').textContent=state.lifetime.toLocaleString();
+  drawer.classList.add('open');
+}
+function closeDrawer(){ drawer.classList.remove('open'); }
+ $('#settingsBtn').addEventListener('click',()=>drawer.classList.toggle('open'));
+ $('#closeDrawer').addEventListener('click',closeDrawer);
+ $('#langSel').addEventListener('change',e=>{ state.lang=e.target.value; store.set('lang',state.lang); });
+ $('#sensRange').addEventListener('input',e=>{ state.sens=+e.target.value; store.set('sens',state.sens); });
+let ltArm=false, ltT=null;
+ $('#resetLifetime').addEventListener('click',function(){
+  if(!ltArm){ ltArm=true; this.textContent='tap again to confirm';
+    ltT=setTimeout(()=>{ltArm=false; this.textContent='Reset lifetime';},2500); }
+  else{ clearTimeout(ltT); ltArm=false; this.textContent='Reset lifetime';
+    state.lifetime=0; store.set('lifetime',0); $('#lifetimeNum').textContent='0'; }
+});
+ $('#changeMantra').addEventListener('click',()=>{ closeDrawer(); openSetup(true); });
+
+/* ================= init ================= */
+soundUI(); pauseUI(); setMode(state.mode);
+if(state.mantra) $('#mantraLine').textContent=`“${state.mantra}”`;
+openSetup(false);
+refreshIcons();
+</script>
 </body>
 </html>
